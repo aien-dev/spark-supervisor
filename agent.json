@@ -1,0 +1,23 @@
+{
+  "$schema": "https://aien.org/schemas/agent-v1.json",
+  "name": "spark-supervisor",
+  "version": "0.1.0",
+  "description": "Sovereign native process supervisor for SparkOS runtime services",
+  "repository": "https://github.com/aien-dev/spark-supervisor",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "architecture": [
+    "x86_64",
+    "aarch64-grace-blackwell"
+  ],
+  "conventions": {
+    "mandatory_branching": true,
+    "zero_em_dashes": true
+  },
+  "runtime": {
+    "rust": "1.85+"
+  },
+  "commands": {
+    "build": "cargo build --release",
+    "test": "cargo test"
+  }
+}

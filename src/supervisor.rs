@@ -15,6 +15,7 @@ use crate::config::{ServiceConfig, SupervisorConfig};
 use crate::proc_telemetry::get_process_stats;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ManagedServiceState {
     pub name: String,
     pub config: ServiceConfig,

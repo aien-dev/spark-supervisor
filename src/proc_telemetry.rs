@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct ProcessStats {
     pub pid: u32,
     pub is_alive: bool,

@@ -32,7 +32,6 @@ impl SupervisorConfig {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,7 +54,10 @@ restart = "on-failure"
         assert_eq!(cortex.command, "/usr/local/bin/cortex-rs");
         assert_eq!(cortex.args, vec!["--port", "18080"]);
         assert_eq!(cortex.restart, "always");
-        assert_eq!(cortex.health_url.as_deref(), Some("http://127.0.0.1:18080/health"));
+        assert_eq!(
+            cortex.health_url.as_deref(),
+            Some("http://127.0.0.1:18080/health")
+        );
 
         let cockpit = cfg.services.get("cockpit").unwrap();
         assert_eq!(cockpit.restart, "on-failure");

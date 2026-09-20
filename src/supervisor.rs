@@ -1,4 +1,3 @@
-
 pub fn compute_restart_delay(restart_count: u32, base_secs: u64, max_secs: u64) -> Duration {
     let factor = 2u64.saturating_pow(restart_count.saturating_sub(1));
     let secs = std::cmp::min(base_secs.saturating_mul(factor), max_secs);
@@ -55,7 +54,10 @@ impl Supervisor {
     }
 
     pub async fn run_daemon(&self) -> Result<(), Box<dyn std::error::Error>> {
-        info!("Starting SparkOS Sovereign Supervisor with {} service(s)...", self.config.services.len());
+        info!(
+            "Starting SparkOS Sovereign Supervisor with {} service(s)...",
+            self.config.services.len()
+        );
 
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
@@ -133,7 +135,10 @@ impl Supervisor {
             } else {
                 config.command.clone()
             };
-            info!("[{}] Spawning process: {} {:?}...", name, command_path, config.args);
+            info!(
+                "[{}] Spawning process: {} {:?}...",
+                name, command_path, config.args
+            );
             let mut cmd = tokio::process::Command::new(&command_path);
             cmd.args(&config.args);
             for (k, v) in &config.env {
@@ -195,11 +200,19 @@ impl Supervisor {
                     }
 
                     let delay = compute_restart_delay(st_restarts, 2, 60);
-                    info!("[{}] Restarting in {}s (restart #{})...", name, delay.as_secs(), st_restarts);
+                    info!(
+                        "[{}] Restarting in {}s (restart #{})...",
+                        name,
+                        delay.as_secs(),
+                        st_restarts
+                    );
                     sleep(delay).await;
                 }
                 Err(e) => {
-                    error!("[{}] Failed to spawn: {}. Retrying in 5 seconds...", name, e);
+                    error!(
+                        "[{}] Failed to spawn: {}. Retrying in 5 seconds...",
+                        name, e
+                    );
                     sleep(Duration::from_secs(5)).await;
                 }
             }
@@ -210,23 +223,31 @@ impl Supervisor {
         let map = self.states.lock().await;
         println!("");
         println!("=== SparkOS Sovereign Supervisor Services ===");
-        println!("{:<18} {:<10} {:<10} {:<12} {:<10} {:<10}", "SERVICE", "STATUS", "PID", "MEMORY", "RESTARTS", "HEALTH");
+        println!(
+            "{:<18} {:<10} {:<10} {:<12} {:<10} {:<10}",
+            "SERVICE", "STATUS", "PID", "MEMORY", "RESTARTS", "HEALTH"
+        );
         println!("{}", "-".repeat(74));
 
         for (name, st) in map.iter() {
             let pid_str = st.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".into());
-            let status_str = if st.pid.is_some() { "RUNNING" } else { "STOPPED" };
+            let status_str = if st.pid.is_some() {
+                "RUNNING"
+            } else {
+                "STOPPED"
+            };
             let mem_str = format!("{:.1} MB", st.rss_mb);
             let health_str = if st.is_healthy { "OK" } else { "UNHEALTHY" };
 
-            println!("{:<18} {:<10} {:<10} {:<12} {:<10} {:<10}",
-                name, status_str, pid_str, mem_str, st.restart_count, health_str);
+            println!(
+                "{:<18} {:<10} {:<10} {:<12} {:<10} {:<10}",
+                name, status_str, pid_str, mem_str, st.restart_count, health_str
+            );
         }
         println!("{}", "-".repeat(74));
         println!("");
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -17,7 +17,10 @@ use config::SupervisorConfig;
 use supervisor::Supervisor;
 
 #[derive(Parser, Debug)]
-#[command(name = "spark-supervisor", about = "Sovereign Native Process Supervisor for SparkOS")]
+#[command(
+    name = "spark-supervisor",
+    about = "Sovereign Native Process Supervisor for SparkOS"
+)]
 struct Cli {
     #[arg(long, default_value_os_t = default_supervisor_config_path())]
     config: PathBuf,
@@ -38,12 +41,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     if !cli.config.exists() {
-        eprintln!("Config file not found at {:?}. Generating default supervisor.toml...", cli.config);
+        eprintln!(
+            "Config file not found at {:?}. Generating default supervisor.toml...",
+            cli.config
+        );
         if let Some(p) = cli.config.parent() {
             let _ = std::fs::create_dir_all(p);
         }

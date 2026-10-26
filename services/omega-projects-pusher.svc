@@ -1,0 +1,38 @@
+# omega-projects-pusher: file confirmed Allen items on aien-dev/omega-projects.
+# Replaces omega-projects-pusher.service + .path (PathExistsGlob=spool-in/*.json).
+# The token (ImportCredential=omega-projects-token) is not provisioned on this host, so the pusher
+# only queues; when it is, add: secret omega-projects-token /etc/aien-supervise/secrets/omega-projects-token
+exec /usr/bin/python3.12 -I /opt/omega-projects-pusher/omega_projects_pusher.py
+watch /var/lib/allen-chat/spool-in .json 5 120
+restart always
+user omega-pusher
+umask 0027
+nice 19
+env PATH=/usr/bin:/bin
+ro /opt/omega-projects-pusher
+ro /run/systemd/resolve
+rw /var/lib/allen-chat/spool-in
+rw /var/lib/allen-chat/spool-status
+rw /var/lib/omega-pusher
+net filter
+allow 127.0.0.53
+deny 127.0.0.0/8
+deny ::1/128
+deny 169.254.0.0/16
+deny fe80::/10
+deny 224.0.0.0/4
+deny ff00::/8
+deny 10.0.0.0/8
+deny 172.16.0.0/12
+deny 192.168.0.0/16
+deny 100.64.0.0/10
+deny fc00::/7
+net-default accept
+memory-max 268435456
+tasks-max 16
+namespaces no
+syscalls @system-service
+syscalls-deny @privileged @resources
+syscall-error eperm
+families unix inet inet6
+mdwe yes

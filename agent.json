@@ -1,23 +1,22 @@
 {
   "$schema": "https://aien.org/schemas/agent-v1.json",
   "name": "spark-supervisor",
-  "version": "0.1.0",
-  "description": "Sovereign native process supervisor for SparkOS runtime services",
+  "version": "0.2.0",
+  "description": "aien-supervise: AIEN's process supervisor in seeded Omega, no systemd",
   "repository": "https://github.com/aien-dev/spark-supervisor",
   "license": "Apache-2.0 WITH LLVM-exception",
   "architecture": [
-    "x86_64",
-    "aarch64-grace-blackwell"
+    "aarch64"
   ],
   "conventions": {
     "mandatory_branching": true,
     "zero_em_dashes": true
   },
   "runtime": {
-    "rust": "1.85+"
+    "omega": "seeded omc, omega-mv 0d6af54f995ffda3a4a07e06da8cd5e343f647f9"
   },
   "commands": {
-    "build": "cargo build --release",
-    "test": "cargo test"
+    "build": "OMC=<omega-mv>/seed/out/omc sh tools/build.sh",
+    "test": "sh tests/user.sh && sudo -n sh tests/sandbox.sh"
   }
 }

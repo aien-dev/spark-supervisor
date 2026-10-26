@@ -7,7 +7,7 @@ All communication, documentation, commits, and agent prompts must strictly adher
 - **Zero Em Dashes and En Dashes**: Never use em dashes or en dashes for pauses or clauses. Use standard commas, colons, parentheses, or periods. Use plain hyphens only for CLI flags or compound terms.
 - **Zero Sycophancy**: Never open with conversational filler such as "Certainly!", "Great question!", or "I would be happy to help." Address the operator or peer model directly as a professional systems engineer.
 - **Ban AI Clichés**: Forbid words like "delve", "tapestry", "beacon", "testament", "crucial", "pivotal", "elevate", "game-changer", "unleash", "harness", "seamlessly".
-- **Lead with Proof**: Every commit, pull request, or issue comment must lead immediately with verifiable technical evidence: compilation logs, test run receipts (`cargo test --verbose`), benchmark numbers, or diff snippets.
+- **Lead with Proof**: Every commit, pull request, or issue comment must lead immediately with verifiable technical evidence: compilation logs, test run receipts (`tests/user.sh`, `tests/sandbox.sh`), benchmark numbers, or diff snippets.
 
 ---
 
@@ -41,9 +41,9 @@ To participate in development, agents must have access to these core tools:
    - Agents never commit directly to `main`.
    - Work happens in descriptive branches: `feat/<name>`, `fix/<name>`, `perf/<name>`, `defense/<name>`.
    - Agents must open pull requests immediately so work is publicly visible in real time.
-2. **`cargo` (Rust Toolchain)**:
-   - Mandatory test execution: `cargo test --workspace --verbose`.
-   - Mandatory vulnerability check: `cargo audit`.
+2. **Seeded Omega toolchain** (the supervisor is `.om`, see README):
+   - Build: `OMC=<omega-mv>/seed/out/omc nice -n 19 sh tools/build.sh` (pinned omc sha256 in the script).
+   - Tests: `sh tests/user.sh` (unprivileged), `sudo -n sh tests/sandbox.sh` (root sandbox qualification), `sh tools/gen-syscalls.sh --check`.
 3. **`cortex-rs` (Canonical Memory)**:
    - Endpoint: `http://127.0.0.1:18080/api/cortex/`
    - Agents recall historical lessons before modifying complex modules and commit durable lessons upon confirmed fixes.
@@ -60,7 +60,7 @@ When an agent opens a Pull Request on GitHub:
 [Agent writes code] 
         │
         ▼
-[Agent runs: cargo test --workspace] (Must pass 100%)
+[Agent runs: tools/build.sh, tests/user.sh, tests/sandbox.sh] (Must pass 100%)
         │
         ▼
 [Agent opens PR via gh pr create] 
@@ -68,7 +68,7 @@ When an agent opens a Pull Request on GitHub:
         │
         ▼
 [AEGIS Defense Bot evaluates PR]
-   - Scans dependencies via cargo audit
+   - Checks host helpers and pins against the README dependency table
    - Inspects diff for secret leaks (.env / tokens)
    - Checks license headers & unslop invariants
         │
@@ -83,5 +83,5 @@ Commits made by AI agents must credit both the agent model and the supervising h
 
 ```
 Author: AIEN Atlas <aien@aienos.com>
-Co-authored-by: Drake Stapleton <drake@aien.org>
+Co-authored-by: Drake Stapleton <drake@aienos.com>
 ```

@@ -1,0 +1,854 @@
+om2
+note aien-supervise shared words: output and path buffers, numbers, the service-file scanner,
+note directory listing, stat fields, exec packets and NUL-separated argument buffers.
+note Built by tools/build.sh as lib.om + syscalls.om + <program>.om through the pinned seeded omc.
+const GOB ulong 0
+const GPT ulong 1
+const GSF ulong 2
+const GNW ulong 3
+const GAB ulong 4
+const GPK ulong 5
+const GPKN ulong 6
+const GDN ulong 7
+const GDC ulong 8
+const GOVF ulong 9
+const GTB ulong 10
+const GPKR ulong 11
+const GAV ulong 12
+const GLNO ulong 13
+const GSV ulong 14
+const ORDO int 524288
+const ODIR int 540672
+const OAPP int 525377
+const OTRU int 524865
+global gu ulong 64
+global ob uchar 65536
+global pth uchar 4096
+global sf uchar 65536
+global ws ulong 256
+global we ulong 256
+global pk uchar 4096
+global ab uchar 262144
+global dnb uchar 65536
+global dno ulong 2048
+global dnl ulong 2048
+global dents uchar 32768
+global stb uchar 128
+global av uchar 4096
+global tb uchar 64
+global ebuf uchar 4096
+text tnl "\n"
+text tsp " "
+text tsl "/"
+text tsvc ".svc"
+text tproc "/proc/"
+text tstat "/stat"
+
+note ------------------------------------------------------------------ output buffer ob
+
+fn ob1 b uchar to void
+n = get gu GOB
+put ob n b
+put gu GOB add n 1
+end
+
+fn ostr s view uchar * to void
+for i ulong len s
+ob1 get s i
+end
+end
+
+fn osf s ulong e ulong to void
+p = s
+while lt p e bound 999999
+ob1 get sf p
+p = add p 1
+end
+end
+
+fn opth to void
+for i ulong get gu GPT
+ob1 get pth i
+end
+end
+
+fn oav n ulong to void
+for i ulong n
+ob1 get av i
+end
+end
+
+fn oword k ulong to void
+osf get ws k get we k
+end
+
+fn digits v ulong to ulong
+k = ulong 0
+x = v
+while true bound 30
+put tb k uchar add rem x 10 48
+k = add k 1
+x = div x 10
+if eq x 0
+break
+end
+end
+put gu GTB k
+ret k
+end
+
+fn onum v long to void
+if lt v 0
+ob1 45
+onum neg v
+ret
+end
+k = digits ulong v
+while gt k 0 bound 30
+k = sub k 1
+ob1 get tb k
+end
+end
+
+fn oflush fd int to void
+n = get gu GOB
+if gt n 0
+w = write fd ob 0 n
+end
+put gu GOB 0
+end
+
+note ------------------------------------------------------------------- path buffer pth
+
+fn pset to void
+put gu GPT 0
+end
+
+fn pb b uchar to void
+n = get gu GPT
+put pth n b
+put gu GPT add n 1
+end
+
+fn pstr s view uchar * to void
+for i ulong len s
+pb get s i
+end
+end
+
+fn psf s ulong e ulong to void
+p = s
+while lt p e bound 999999
+pb get sf p
+p = add p 1
+end
+end
+
+fn pword k ulong to void
+psf get ws k get we k
+end
+
+fn pav n ulong to void
+for i ulong n
+pb get av i
+end
+end
+
+fn pnum v ulong to void
+k = digits v
+while gt k 0 bound 30
+k = sub k 1
+pb get tb k
+end
+end
+
+fn plen to ulong
+ret get gu GPT
+end
+
+fn popen flags int mode int to long
+ret fopen pth 0 get gu GPT flags mode
+end
+
+fn pstat to long
+ret stat pth 0 get gu GPT stb 0 128
+end
+
+fn plstat to long
+ret lstat pth 0 get gu GPT stb 0 128
+end
+
+note --------------------------------------------------------------------- stat fields
+
+fn st32 o ulong to ulong
+v = ulong get stb o
+v = or v shl ulong get stb add o 1 8
+v = or v shl ulong get stb add o 2 16
+v = or v shl ulong get stb add o 3 24
+ret v
+end
+
+fn st64 o ulong to ulong
+ret or st32 o shl st32 add o 4 32
+end
+
+fn stmode to ulong
+ret st32 16
+end
+
+fn stuid to ulong
+ret st32 24
+end
+
+fn stsize to ulong
+ret st64 48
+end
+
+fn stmtime to ulong
+ret st64 88
+end
+
+fn isreg to bool
+ret eq and stmode 61440 32768
+end
+
+fn isdir to bool
+ret eq and stmode 61440 16384
+end
+
+note A trusted path: lstat succeeds, owner root, no group or other write bit, regular file or
+note directory as asked (kind 1 file, 2 directory). Symbolic links are refused.
+fn rootok kind ulong to bool
+r = plstat
+if lt r 0
+ret false
+end
+if ne stuid 0
+ret false
+end
+if ne and stmode 18 0
+ret false
+end
+if eq kind 1
+ret isreg
+end
+ret isdir
+end
+
+note Every directory above the path in pth (up to its last '/') is rootok 2. pth is restored.
+fn rootdirs to bool
+n = get gu GPT
+i = ulong 1
+while lt i n bound 4096
+if eq get pth i 47
+put gu GPT i
+if not rootok 2
+put gu GPT n
+ret false
+end
+end
+i = add i 1
+end
+put gu GPT n
+put gu GPT 1
+ok = rootok 2
+put gu GPT n
+ret ok
+end
+
+note ------------------------------------------------------------------ whole-file read
+
+note Read the file named by pth into sf. Length, or -errno; -27 when it does not fit.
+fn rdfile to long
+fd = popen ORDO 0
+if lt fd 0
+ret fd
+end
+n = ulong 0
+while true bound 100000
+r = read int fd sf n sub len sf n
+if lt r 0
+c = fclose int fd
+ret r
+end
+if eq r 0
+break
+end
+n = add n ulong r
+if eq n len sf
+c = fclose int fd
+ret -27
+end
+end
+c = fclose int fd
+put gu GSF n
+ret long n
+end
+
+note -------------------------------------------------------------- service-file scanner
+
+fn lineend q ulong to ulong
+e = get gu GSF
+p = q
+while lt p e bound 999999
+if eq get sf p 10
+ret p
+end
+p = add p 1
+end
+ret e
+end
+
+fn wordend q ulong e ulong to ulong
+p = q
+while lt p e bound 999999
+c = get sf p
+if or or eq c 32 eq c 9 eq c 10
+ret p
+end
+p = add p 1
+end
+ret e
+end
+
+note Split the line at p into words (ws/we, GNW); '#' as the first word starts a comment.
+note A line with more than 256 words sets GOVF. Returns the start of the next line.
+fn lnext p ulong to ulong
+e = lineend p
+put gu GNW 0
+put gu GOVF 0
+q = p
+n = ulong 0
+while lt q e bound 999999
+c = get sf q
+if or eq c 32 eq c 9
+q = add q 1
+continue
+end
+if and eq n 0 eq c 35
+break
+end
+w = wordend q e
+if lt n len ws
+put ws n q
+put we n w
+n = add n 1
+else
+put gu GOVF 1
+end
+q = w
+end
+put gu GNW n
+put gu GLNO add get gu GLNO 1
+if lt e get gu GSF
+ret add e 1
+end
+ret e
+end
+
+fn nw to ulong
+ret get gu GNW
+end
+
+fn wlen k ulong to ulong
+ret sub get we k get ws k
+end
+
+fn wch k ulong i ulong to uchar
+ret get sf add get ws k i
+end
+
+fn wis k ulong t view uchar * to bool
+if ne wlen k len t
+ret false
+end
+s = get ws k
+for i ulong len t
+if ne get sf add s i get t i
+ret false
+end
+end
+ret true
+end
+
+note Word k ends with text t.
+fn wends k ulong t view uchar * to bool
+n = wlen k
+if lt n len t
+ret false
+end
+s = sub get we k len t
+for i ulong len t
+if ne get sf add s i get t i
+ret false
+end
+end
+ret true
+end
+
+note Decimal number of at most 18 digits, or -1.
+fn wnum k ulong to long
+n = wlen k
+if or eq n 0 gt n 18
+ret -1
+end
+v = long 0
+for i ulong n
+c = wch k i
+if or lt c 48 gt c 57
+ret -1
+end
+v = add mul v 10 long sub c 48
+end
+ret v
+end
+
+note Octal number of at most 4 digits, or -1.
+fn woct k ulong to long
+n = wlen k
+if or eq n 0 gt n 4
+ret -1
+end
+v = long 0
+for i ulong n
+c = wch k i
+if or lt c 48 gt c 55
+ret -1
+end
+v = add mul v 8 long sub c 48
+end
+ret v
+end
+
+note A service name: 1..32 bytes of a-z 0-9 '-', not starting with '-'.
+fn okname s ulong e ulong to bool
+n = sub e s
+if or eq n 0 gt n 32
+ret false
+end
+if eq get sf s 45
+ret false
+end
+p = s
+while lt p e bound 64
+c = get sf p
+if not or or and ge c 97 le c 122 and ge c 48 le c 57 eq c 45
+ret false
+end
+p = add p 1
+end
+ret true
+end
+
+note An absolute, normalised path word: starts with '/', no empty, '.' or '..' component, no
+note trailing '/', only printable bytes without quotes, '\' or ';' (it reaches nft and bwrap).
+fn okpath k ulong to bool
+n = wlen k
+if or lt n 2 gt n 1024
+ret false
+end
+if ne wch k 0 47
+ret false
+end
+if eq wch k sub n 1 47
+ret false
+end
+for i ulong n
+c = wch k i
+if or le c 32 ge c 127
+ret false
+end
+if or or eq c 34 eq c 39 or eq c 92 eq c 59
+ret false
+end
+if eq c 47
+if eq wch k add i 1 47
+ret false
+end
+if eq wch k add i 1 46
+d = uchar 0
+if lt add i 2 n
+d = wch k add i 2
+end
+if or eq add i 2 n eq d 47
+ret false
+end
+if and eq d 46 or eq add i 3 n eq wch k add i 3 47
+ret false
+end
+end
+end
+end
+ret true
+end
+
+note ------------------------------------------------------------------ arguments, env
+
+note Copy argument i into av; returns its length (0 when it does not fit).
+fn arg i ulong to ulong
+r = argread i av 0 len av
+if lt r 0
+ret 0
+end
+put gu GAV ulong r
+ret ulong r
+end
+
+fn aveq n ulong t view uchar * to bool
+if ne n len t
+ret false
+end
+for i ulong n
+if ne get av i get t i
+ret false
+end
+end
+ret true
+end
+
+note Find the environment entry NAME=value (name in t). Copies the value into av, returns its
+note length, or -1 when absent.
+fn avshift o ulong m ulong to void
+for i ulong m
+put av i get av add i o
+end
+end
+
+fn avpre n ulong t view uchar * to bool
+if le n len t
+ret false
+end
+if ne get av len t 61
+ret false
+end
+for i ulong len t
+if ne get av i get t i
+ret false
+end
+end
+ret true
+end
+
+fn envget t view uchar * to long
+c = envcnt
+for j ulong ulong c
+r = envread j av 0 len av
+if gt r 0
+if avpre ulong r t
+o = add len t 1
+m = sub ulong r o
+avshift o m
+ret long m
+end
+end
+end
+ret -1
+end
+
+note --------------------------------------------------------------- directory listing
+
+fn dname k ulong to void
+o = get dno k
+for i ulong get dnl k
+pb get dnb add o i
+end
+end
+
+fn dnch k ulong i ulong to uchar
+ret get dnb add get dno k i
+end
+
+fn dnends k ulong t view uchar * to bool
+n = get dnl k
+if le n len t
+ret false
+end
+o = sub add get dno k n len t
+for i ulong len t
+if ne get dnb add o i get t i
+ret false
+end
+end
+ret true
+end
+
+fn dnadd o ulong to bool
+s = add o 19
+n = ulong 0
+while lt n 256 bound 300
+if eq get dents add s n 0
+break
+end
+n = add n 1
+end
+if or eq n 0 and eq n 1 eq get dents s 46
+ret true
+end
+if and eq n 2 and eq get dents s 46 eq get dents add s 1 46
+ret true
+end
+c = get gu GDC
+u = get gu GDN
+if or ge c len dno gt add u n len dnb
+ret false
+end
+for i ulong n
+put dnb add u i get dents add s i
+end
+put dno c u
+put dnl c n
+put gu GDC add c 1
+put gu GDN add u n
+ret true
+end
+
+note List the directory named by pth into dnb (no '.' or '..'). Count, or -errno.
+fn lsdir to long
+put gu GDN 0
+put gu GDC 0
+fd = popen ODIR 0
+if lt fd 0
+ret fd
+end
+while true bound 100000
+r = getdnts int fd dents 0 len dents
+if lt r 0
+c = fclose int fd
+ret r
+end
+if eq r 0
+break
+end
+o = ulong 0
+while lt o ulong r bound 100000
+rl = or ulong get dents add o 16 shl ulong get dents add o 17 8
+if not dnadd o
+c = fclose int fd
+ret -105
+end
+o = add o rl
+end
+end
+c = fclose int fd
+ret long get gu GDC
+end
+
+note ------------------------------------------------------------ exec packet (pk) builder
+
+fn pkreset to void
+put pk 0 0
+put pk 1 0
+put gu GPK 2
+put gu GPKN 0
+end
+
+fn pkbeg to void
+put gu GPKR get gu GPK
+put gu GPK add get gu GPK 2
+end
+
+fn pkc b uchar to void
+n = get gu GPK
+put pk n b
+put gu GPK add n 1
+end
+
+fn pkend to void
+r = get gu GPKR
+n = sub sub get gu GPK r 2
+put pk r uchar and n 255
+put pk add r 1 uchar shr n 8
+c = add get gu GPKN 1
+put gu GPKN c
+put pk 0 uchar and c 255
+put pk 1 uchar shr c 8
+end
+
+fn pkstr s view uchar * to void
+pkbeg
+for i ulong len s
+pkc get s i
+end
+pkend
+end
+
+fn pkword k ulong to void
+pkbeg
+s = get ws k
+for i ulong wlen k
+pkc get sf add s i
+end
+pkend
+end
+
+fn pkpth to void
+pkbeg
+for i ulong get gu GPT
+pkc get pth i
+end
+pkend
+end
+
+fn pkav n ulong to void
+pkbeg
+for i ulong n
+pkc get av i
+end
+pkend
+end
+
+note True when another record of n bytes fits in the 4096-byte, 64-record exec packet.
+fn pkroom n ulong to bool
+ret and lt get gu GPKN 64 le add add get gu GPK n 2 4096
+end
+
+note --------------------------------------------------- NUL-separated argument buffer ab
+
+fn abreset to void
+put gu GAB 0
+end
+
+fn ab1 b uchar to void
+n = get gu GAB
+put ab n b
+put gu GAB add n 1
+end
+
+fn abstr s view uchar * to void
+for i ulong len s
+ab1 get s i
+end
+end
+
+fn abz to void
+ab1 0
+end
+
+fn abarg s view uchar * to void
+abstr s
+abz
+end
+
+fn absf s ulong e ulong to void
+p = s
+while lt p e bound 999999
+ab1 get sf p
+p = add p 1
+end
+end
+
+fn abword k ulong to void
+absf get ws k get we k
+end
+
+fn abnum v ulong to void
+k = digits v
+while gt k 0 bound 30
+k = sub k 1
+ab1 get tb k
+end
+end
+
+fn abpth to void
+for i ulong get gu GPT
+ab1 get pth i
+end
+end
+
+note ---------------------------------------------------------------------------- time
+
+fn civ2 doe long yoe long y long to long
+doy = sub doe sub add mul 365 yoe div yoe 4 div yoe 100
+mp = div add mul 5 doy 2 153
+d = add sub doy div add mul 153 mp 2 5 1
+m = add mp 3
+yy = y
+if ge mp 10
+m = sub mp 9
+yy = add y 1
+end
+ret add add mul yy 10000 mul m 100 d
+end
+
+note Civil date (proleptic Gregorian) of days since 1970-01-01, packed y*10000 + m*100 + d.
+fn civil days long to long
+z = add days 719468
+era = div z 146097
+doe = sub z mul era 146097
+yoe = div sub add sub doe div doe 1460 div doe 36524 div doe 146096 365
+ret civ2 doe yoe add yoe mul era 400
+end
+
+fn o2 v long to void
+ob1 uchar add div v 10 48
+ob1 uchar add rem v 10 48
+end
+
+note Write the UTC time of t (seconds since the epoch) as 2026-10-26T15:28:56Z into ob.
+fn otime t long to void
+v = civil div t 86400
+y = div v 10000
+o2 div y 100
+o2 rem y 100
+ob1 45
+o2 div rem v 10000 100
+ob1 45
+o2 rem v 100
+ob1 84
+s = rem t 86400
+o2 div s 3600
+ob1 58
+o2 div rem s 3600 60
+ob1 58
+o2 rem s 60
+ob1 90
+end
+
+fn nowsec to long
+ret div realns 1000000000
+end
+
+note ------------------------------------------------------------------- process helpers
+
+note Start time (field 22 of /proc/PID/stat, clock ticks since boot), or -1.
+fn pstime pid long to long
+pset
+pstr tproc
+pnum ulong pid
+pstr tstat
+fd = popen ORDO 0
+if lt fd 0
+ret -1
+end
+r = read int fd ebuf 0 len ebuf
+c = fclose int fd
+if le r 0
+ret -1
+end
+n = ulong r
+q = ulong 0
+for i ulong n
+if eq get ebuf i 41
+q = i
+end
+end
+f = ulong 2
+i = add q 1
+v = long 0
+while lt i n bound 4096
+c2 = get ebuf i
+if eq c2 32
+f = add f 1
+if gt f 22
+ret v
+end
+else
+if eq f 22
+v = add mul v 10 long sub c2 48
+end
+end
+i = add i 1
+end
+ret -1
+end
+

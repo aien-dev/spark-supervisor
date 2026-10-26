@@ -1,0 +1,34 @@
+# allen-catalog: Allen's public catalog, unauthenticated GitHub read, daily and 5 min after boot.
+# Replaces allen-catalog.service + allen-catalog.timer (OnBootSec=5min, OnCalendar=daily,
+# Persistent=true -> every/delay with the last run kept in the supervisor state).
+exec /usr/bin/python3.12 -I /opt/allen-catalog/catalog.py /var/lib/allen-catalog
+type oneshot
+every 86400
+delay 300
+timeout 300
+user allen-catalog
+env HOME=/nonexistent
+env PATH=/usr/bin:/bin
+umask 0022
+nice 19
+ro /opt/allen-catalog
+ro /run/systemd/resolve
+rw /var/lib/allen-catalog
+net filter
+allow 127.0.0.53
+deny 127.0.0.0/8
+deny ::1/128
+deny 169.254.0.0/16
+deny fe80::/10
+deny 224.0.0.0/4
+deny ff00::/8
+deny 10.0.0.0/8
+deny 172.16.0.0/12
+deny 192.168.0.0/16
+deny 100.64.0.0/10
+deny fc00::/7
+net-default accept
+namespaces no
+syscalls @system-service
+families unix inet inet6
+mdwe yes

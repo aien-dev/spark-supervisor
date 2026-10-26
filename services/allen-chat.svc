@@ -1,0 +1,39 @@
+# allen-chat: public gateway for www.aienos.com/allen/ (tailnet only, no credentials).
+# Replaces /etc/systemd/system/allen-chat.service (as of 2026-10-26 11:26 local); the
+# directive-by-directive mapping and probes are in docs/ALLEN-DIRECTIVES.md.
+# Install root-owned 0644 in /etc/aien-supervise/services/.
+exec /usr/bin/python3.12 -I /opt/allen-chat/allen_chat.py --listen 100.64.0.2:18110 --trusted-proxy 100.64.0.3 --upstream 127.0.0.1:18091 --system-prompt /opt/allen-chat/system-prompt.txt --catalog /var/lib/allen-catalog/catalog.txt --areas-file /var/lib/allen-catalog/areas.txt --omc /opt/allen-chat/omc --irwasm /opt/allen-chat/irwasm --spool-in /var/lib/allen-chat/spool-in --spool-status /var/lib/allen-chat/spool-status --contacts-drop /var/lib/allen-chat/contacts-drop --memory-url http://127.0.0.1:18096 --relay-drop /var/lib/allen-chat/relay-drop --console-listen 100.64.0.2:18112 --console-state /var/lib/allen-chat/console
+restart on-failure
+backoff 5 300
+user allen-chat
+groups allen-spool allen-drop allen-relaydrop
+envfile /etc/allen-chat/env
+env PATH=/usr/bin:/bin
+umask 0027
+nice 5
+ro /opt/allen-chat
+ro /var/lib/allen-catalog
+ro /var/lib/allen-chat/spool-status
+rw /var/lib/allen-chat/spool-in
+rw /var/lib/allen-chat/contacts-drop
+rw /var/lib/allen-chat/relay-drop
+rw /var/lib/allen-chat/console
+net filter
+allow 127.0.0.1
+allow 100.64.0.1
+allow 100.64.0.2
+allow 100.64.0.3
+allow 100.64.0.4
+net-default drop
+listen 18110 100.64.0.3 100.64.0.2 127.0.0.1
+listen 18112 100.64.0.1 100.64.0.4 100.64.0.2 127.0.0.1
+memory-max 1073741824
+tasks-max 128
+cpu-quota 200
+nofile 1024
+# The gateway runs bwrap itself for its compile sandbox: user namespaces stay creatable and the
+# filter adds @mount, unshare and setns (as SystemCallFilter=@system-service @mount unshare setns).
+namespaces yes
+syscalls @system-service @mount @ns
+families unix inet inet6 netlink
+mdwe yes

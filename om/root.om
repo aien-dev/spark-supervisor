@@ -1,0 +1,2519 @@
+note aien-supervise-root: the only part of aien-supervise that runs as root. Invoked through one
+note sudoers rule as `aien-supervise-root VERB NAME`, VERB run|stop|kill|check. It reads only
+note /etc/aien-supervise/services/NAME.svc, refuses unless that file, its directories and every
+note program and file it hands on are root-owned and not group/other-writable, and never runs a
+note service as root: it builds the per-service sandbox and execs
+note   [nice] -> setpriv (uid/gid/groups, no_new_privs, empty bounding/inheritable/ambient caps)
+note   -> bwrap (user, pid, ipc, uts, cgroup namespaces; optional net; read-only /usr and /etc,
+note      declared binds, own /proc, minimal /dev, private /tmp; seccomp allowlist) -> program
+note after putting itself into /sys/fs/cgroup/aien-supervise/NAME (memory.max, cpu.max, pids.max)
+note and loading the service's nftables table (meta skuid). Exit 2 = refused; nothing ran.
+text tsdir "/etc/aien-supervise/services/"
+text tbwrap "/usr/bin/bwrap"
+text tsetpr "/usr/bin/setpriv"
+text tprlim "/usr/bin/prlimit"
+text tnice "/usr/bin/nice"
+text tnft "/usr/sbin/nft"
+text twatch "/usr/local/libexec/aien-supervise/aien-watch"
+text tcgr "/sys/fs/cgroup/aien-supervise"
+text tpasswd "/etc/passwd"
+text tgroup "/etc/group"
+text tpfd "/proc/self/fd/"
+text tself "/usr/local/libexec/aien-supervise/aien-supervise-root"
+text vrun "run"
+text vstop "stop"
+text vkill "kill"
+text vcheck "check"
+text kexec "exec"
+text ktype "type"
+text krst "restart"
+text kback "backoff"
+text kevery "every"
+text kdelay "delay"
+text ktmo "timeout"
+text kstop "stoptime"
+text kauto "autostart"
+text klmax "log-max"
+text klkeep "log-keep"
+text kenv "env"
+text kdir "dir"
+text kumask "umask"
+text knice "nice"
+text kwatch "watch"
+text kuser "user"
+text kgroup "group"
+text kgroups "groups"
+text kenvf "envfile"
+text ksec "secret"
+text kro "ro"
+text krw "rw"
+text khide "hide"
+text knet "net"
+text kallow "allow"
+text kdeny "deny"
+text klisten "listen"
+text kndef "net-default"
+text kmem "memory-max"
+text kswap "memory-swap-max"
+text ktasks "tasks-max"
+text kcpu "cpu-quota"
+text knofile "nofile"
+text kns "namespaces"
+text ksys "syscalls"
+text ksysd "syscalls-deny"
+text kserr "syscall-error"
+text kfam "families"
+text kmdwe "mdwe"
+text wsimple "simple"
+text woneshot "oneshot"
+text walways "always"
+text wonfail "on-failure"
+text wno "no"
+text wyes "yes"
+text whost "host"
+text wnone "none"
+text wfilter "filter"
+text waccept "accept"
+text wdrop "drop"
+text weperm "eperm"
+text wkill "kill"
+text gss "@system-service"
+text gmnt "@mount"
+text gns "@ns"
+text gpriv "@privileged"
+text gres "@resources"
+text funix "unix"
+text finet "inet"
+text finet6 "inet6"
+text fnetl "netlink"
+text pvar "/var/"
+text psrv "/srv/"
+text prun "/run/"
+text phome "/home"
+text proot "/root"
+text pproc "/proc"
+text psys "/sys"
+text pdev "/dev"
+text ptmp "/tmp"
+text pruser "/run/user"
+text pasup "/run/aien-supervise"
+text petc "/etc"
+text pusr "/usr"
+text prun1 "/run"
+text pcred "/run/credentials"
+text pcredd "/run/credentials/"
+text ldpre "LD_"
+text ecred "CREDENTIALS_DIRECTORY"
+text eprefix "aien-supervise-root: "
+text eline "line "
+text eusage "usage: aien-supervise-root run|stop|kill|check NAME"
+text enotroot "must run as root (sudo -n)"
+text ename "bad service name"
+text elayout "unsafe host layout (not root-owned, or group/other-writable): "
+text eread "cannot read service file: "
+text ekey "unknown key"
+text earity "wrong number of words"
+text evalue "bad value"
+text epath "bad or forbidden path"
+text eexec "exec program not root-owned/non-writable: "
+text euser "missing or unknown user, or uid outside 1..999"
+text egroup "unknown group, or privileged gid"
+text esys "syscalls line required"
+text eenvf "bad envfile: "
+text esecret "bad secret file (root-owned, mode 0600 or 0400, regular): "
+text ecg "cgroup setup failed: "
+text erunning "already running (cgroup populated)"
+text enft "nftables table failed to load"
+text eprl "prlimit failed"
+text eexecf "exec failed"
+text etoo "too many: "
+text ttbl "aiens_"
+text nft1 "table inet "
+text nft2 " {}\ndelete table inet "
+text nft3 "\ntable inet "
+text nft4 " {\n chain out {\n  type filter hook output priority 0; policy accept;\n  meta skuid "
+text nft5 " ct state established,related accept\n"
+text nft6 "  meta skuid "
+text nft7 " ip daddr "
+text nft7b " ip6 daddr "
+text nft8 " accept\n"
+text nft9 " drop\n"
+text nft10 " meta l4proto { tcp, udp } th dport "
+text nft11 " }\n chain in {\n  type filter hook input priority 0; policy accept;\n"
+text nft12 "  tcp dport "
+text nft13 " ip saddr != { "
+text nft14 " } drop\n"
+text nft15 " meta nfproto ipv6 drop\n"
+text nft16 " }\n}\n"
+text tcom ", "
+text cprocs "/cgroup.procs"
+text cevents "/cgroup.events"
+text ckill "/cgroup.kill"
+text csub "/cgroup.subtree_control"
+text cmem "/memory.max"
+text cswap "/memory.swap.max"
+text cpids "/pids.max"
+text ccpu "/cpu.max"
+text cctl "+cpu +memory +pids"
+text cmax "max"
+text cperiod " 100000"
+text cpop "populated 1"
+text c1 "1"
+text b1 "--unshare-user"
+text b2 "--unshare-pid"
+text b3 "--unshare-ipc"
+text b4 "--unshare-uts"
+text b5 "--unshare-cgroup-try"
+text b6 "--unshare-net"
+text b7 "--disable-userns"
+text b8 "--die-with-parent"
+text b9 "--new-session"
+text b10 "--ro-bind"
+text b11 "--bind"
+text b12 "--symlink"
+text b13 "--proc"
+text b14 "--dev"
+text b15 "--tmpfs"
+text b16 "--perms"
+text b17 "--dir"
+text b18 "--chdir"
+text b19 "--setenv"
+text b20 "--seccomp"
+text b21 "--ro-bind-data"
+text b22 "--"
+text b23 "--args"
+text b24 "--ro-bind-try"
+text b25 "--remount-ro"
+text kps "/proc/sys /proc/sysrq-trigger /proc/irq /proc/bus /proc/fs /proc/acpi /proc/asound /proc/latency_stats /proc/timer_stats"
+text busr "/usr"
+text bubin "usr/bin"
+text bulib "usr/lib"
+text busbin "usr/sbin"
+text bbin "/bin"
+text blib "/lib"
+text bsbin "/sbin"
+text betc "/etc"
+text bproc "/proc"
+text bdev "/dev"
+text btmp "/tmp"
+text bvar "/var"
+text bvtmp "/var/tmp"
+text broot "/"
+text p1777 "1777"
+text p0755 "0755"
+text p0444 "0444"
+text p0000 "0000"
+text s1 "--reuid="
+text s2 "--regid="
+text s3 "--groups="
+text s4 "--clear-groups"
+text s5 "--no-new-privs"
+text s6 "--bounding-set=-all"
+text s7 "--inh-caps=-all"
+text s8 "--ambient-caps=-all"
+text tdashn "-n"
+text tdashf "-f"
+text r1 "--pid"
+text r2 "--rtprio=0:0"
+text r3 "--nofile="
+text tcolon ":"
+text tredact "<envfile value>"
+text tmemfd "aien-supervise"
+text oarg "arg: "
+text onft "nft:\n"
+text osec "seccomp instructions: "
+text oallow " allowed syscalls: "
+text ochain "chain: "
+global xb uchar 262144
+global sa uchar 1024
+global bp uchar 32768
+global rv ulong 64
+global gid ulong 32
+global stat4 uchar 4
+global pfd uchar 8
+note Slots of rv.
+const RUID ulong 0
+const RGID ulong 1
+const RNG ulong 2
+const RMEM ulong 3
+const RSWP ulong 4
+const RTSK ulong 5
+const RCPU ulong 6
+const RNOF ulong 7
+const RNIC ulong 8
+const RUMK ulong 9
+const RNET ulong 10
+const RNDF ulong 11
+const RNS ulong 12
+const RERR ulong 13
+const RMDW ulong 14
+const RFAM ulong 15
+const RXL ulong 16
+const RSYS ulong 17
+const RNS0 ulong 18
+const RNS1 ulong 19
+const RBPN ulong 20
+const RCHK ulong 21
+const RWAT ulong 22
+const RDIR ulong 23
+const RXN ulong 24
+const RFDA ulong 25
+const RFDS ulong 26
+const RSEC ulong 27
+const RCRD ulong 28
+const RUNL ulong 29
+const RGX ulong 30
+
+note --------------------------------------------------------------------- refusal
+
+fn efl to void
+oflush 2
+end
+
+fn refuse t view uchar * to int
+ostr eprefix
+ostr t
+ostr tnl
+efl
+ret 2
+end
+
+fn refpth t view uchar * to int
+ostr eprefix
+ostr t
+opth
+ostr tnl
+efl
+ret 2
+end
+
+fn refln t view uchar * to int
+ostr eprefix
+ostr eline
+onum long get gu GLNO
+ostr tsp
+ostr t
+ostr tnl
+efl
+ret 2
+end
+
+note ---------------------------------------------------------------- service file
+
+global nmb uchar 64
+global unb uchar 64
+
+fn pname to void
+for i ulong get gu GSV
+pb get nmb i
+end
+end
+
+fn svcpth to void
+pset
+pstr tsdir
+pname
+pstr tsvc
+end
+
+fn okname2 n ulong to bool
+if or eq n 0 gt n 32
+ret false
+end
+if eq get av 0 45
+ret false
+end
+for i ulong n
+c = get av i
+if not or or and ge c 97 le c 122 and ge c 48 le c 57 eq c 45
+ret false
+end
+end
+ret true
+end
+
+note Host layout: every program and directory the helper relies on is root-owned and not
+note group/other-writable (aien-run-exec standard), checked before anything else runs.
+fn layout1 t view uchar * kind ulong to bool
+pset
+pstr t
+if not rootok kind
+ret false
+end
+ret rootdirs
+end
+
+fn hostok to int
+if not layout1 tbwrap 1
+ret refpth elayout
+end
+if not layout1 tsetpr 1
+ret refpth elayout
+end
+if not layout1 tprlim 1
+ret refpth elayout
+end
+if not layout1 tnice 1
+ret refpth elayout
+end
+if not layout1 tnft 1
+ret refpth elayout
+end
+if not layout1 twatch 1
+ret refpth elayout
+end
+if not layout1 tself 1
+ret refpth elayout
+end
+if not layout1 tpasswd 1
+ret refpth elayout
+end
+if not layout1 tgroup 1
+ret refpth elayout
+end
+svcpth
+if not rootok 1
+ret refpth elayout
+end
+if not rootdirs
+ret refpth elayout
+end
+ret 0
+end
+
+note ------------------------------------------------------------- passwd and group
+
+fn rdx to long
+fd = popen ORDO 0
+if lt fd 0
+ret fd
+end
+n = ulong 0
+while true bound 100000
+r = read int fd xb n sub len xb n
+if le r 0
+break
+end
+n = add n ulong r
+if eq n len xb
+c = fclose int fd
+ret -27
+end
+end
+c = fclose int fd
+ret long n
+end
+
+note Compare the colon field xb[a..b) with word k of the current line.
+fn xweq a ulong b ulong k ulong to bool
+if ne sub b a wlen k
+ret false
+end
+s = get ws k
+for i ulong sub b a
+if ne get xb add a i get sf add s i
+ret false
+end
+end
+ret true
+end
+
+fn xnum a ulong b ulong to long
+if or eq a b gt sub b a 9
+ret -1
+end
+v = long 0
+p = a
+while lt p b bound 16
+c = get xb p
+if or lt c 48 gt c 57
+ret -1
+end
+v = add mul v 10 long sub c 48
+p = add p 1
+end
+ret v
+end
+
+fn xcolon p ulong e ulong to ulong
+q = p
+while lt q e bound 999999
+c = get xb q
+if or eq c 58 eq c 10
+ret q
+end
+q = add q 1
+end
+ret e
+end
+
+note Find the line of xb (n bytes) whose first field equals word k; returns its start or n.
+fn xfind n ulong k ulong to ulong
+p = ulong 0
+while lt p n bound 999999
+f = xcolon p n
+if xweq p f k
+ret p
+end
+q = p
+while lt q n bound 999999
+if eq get xb q 10
+break
+end
+q = add q 1
+end
+p = add q 1
+end
+ret n
+end
+
+note Field i (0-based) of the colon line at p as a number, or -1.
+fn xfield p ulong n ulong i ulong to long
+a = p
+for j ulong i
+a = add xcolon a n 1
+if gt a n
+ret -1
+end
+end
+b = xcolon a n
+ret xnum a b
+end
+
+fn lookuser k ulong to bool
+pset
+pstr tpasswd
+r = rdx
+if lt r 0
+ret false
+end
+n = ulong r
+p = xfind n k
+if ge p n
+ret false
+end
+u = xfield p n 2
+g = xfield p n 3
+if or lt u 1 gt u 999
+ret false
+end
+if lt g 100
+ret false
+end
+put rv RUID ulong u
+put rv RGID ulong g
+ret true
+end
+
+note Groups that are root in disguise are refused by name; any gid below 100 is refused.
+text gdocker "docker"
+text gsudo "sudo"
+text gadm "adm"
+text gdisk "disk"
+text glxd "lxd"
+text gkvm "kvm"
+text gshadow "shadow"
+text glibvirt "libvirt"
+text gsysj "systemd-journal"
+
+fn badgrp k ulong to bool
+if or or wis k gdocker wis k gsudo or wis k gadm wis k gdisk
+ret true
+end
+if or or wis k glxd wis k gkvm or wis k gshadow or wis k glibvirt wis k gsysj
+ret true
+end
+ret false
+end
+
+fn lookgrp k ulong to long
+if badgrp k
+ret -1
+end
+pset
+pstr tgroup
+r = rdx
+if lt r 0
+ret -1
+end
+n = ulong r
+p = xfind n k
+if ge p n
+ret -1
+end
+g = xfield p n 2
+if lt g 100
+ret -1
+end
+ret g
+end
+
+note ------------------------------------------------------------------- validation
+
+fn kis t view uchar * to bool
+ret and gt nw 0 wis 0 t
+end
+
+fn pfx k ulong t view uchar * to bool
+n = wlen k
+if lt n len t
+ret false
+end
+s = get ws k
+for i ulong len t
+if ne get sf add s i get t i
+ret false
+end
+end
+if eq n len t
+ret true
+end
+c = get sf add s len t
+ret or eq c 47 eq get t sub len t 1 47
+end
+
+fn badro k ulong to bool
+if or or pfx k phome pfx k proot or pfx k pproc pfx k psys
+ret true
+end
+if or or pfx k pdev pfx k ptmp or pfx k pruser pfx k pasup
+ret true
+end
+ret false
+end
+
+fn okrw k ulong to bool
+if not okpath k
+ret false
+end
+if badro k
+ret false
+end
+if not or or pfx k pvar pfx k psrv pfx k prun
+ret false
+end
+ret gt wlen k 5
+end
+
+fn addrch c uchar to bool
+if or and ge c 48 le c 57 and ge c 97 le c 102
+ret true
+end
+ret or or eq c 46 eq c 58 eq c 47
+end
+
+fn okaddr k ulong to bool
+n = wlen k
+if or eq n 0 gt n 64
+ret false
+end
+dots = false
+for i ulong n
+c = wch k i
+if not addrch c
+ret false
+end
+if or eq c 46 eq c 58
+dots = true
+end
+end
+ret dots
+end
+
+fn isv6 k ulong to bool
+for i ulong wlen k
+if eq wch k i 58
+ret true
+end
+end
+ret false
+end
+
+fn okport k ulong to bool
+v = wnum k
+ret and ge v 1 le v 65535
+end
+
+fn keych c uchar to bool
+if or and ge c 65 le c 90 and ge c 97 le c 122
+ret true
+end
+ret or and ge c 48 le c 57 eq c 95
+end
+
+fn isldpre s ulong e ulong to bool
+if lt sub e s 3
+ret false
+end
+a = eq get sf s 76
+b = eq get sf add s 1 68
+c = eq get sf add s 2 95
+ret and and a b c
+end
+
+fn okenvkey s ulong e ulong to bool
+if or eq s e gt sub e s 64
+ret false
+end
+p = s
+while lt p e bound 70
+if not keych get sf p
+ret false
+end
+p = add p 1
+end
+ret not isldpre s e
+end
+
+fn envkeyend k ulong to ulong
+s = get ws k
+e = get we k
+p = s
+while lt p e bound 999999
+if eq get sf p 61
+ret p
+end
+p = add p 1
+end
+ret e
+end
+
+fn numarg k ulong lo long hi long to bool
+v = wnum k
+ret and ge v lo le v hi
+end
+
+note A root-owned, not group/other-writable regular file (and its directories) named by word k.
+fn rootfile k ulong to bool
+pset
+pword k
+if not rootok 1
+ret false
+end
+ret rootdirs
+end
+
+note Validate the daemon keys (shared with aien-supervise) on the current line; 1 ok, 0 no
+note match, 2 error already reported.
+fn vdaemon to ulong
+if kis ktype
+if or ne nw 2 not or wis 1 wsimple wis 1 woneshot
+ret 2
+end
+ret 1
+end
+if kis krst
+if or ne nw 2 not or or wis 1 walways wis 1 wonfail wis 1 wno
+ret 2
+end
+ret 1
+end
+if kis kback
+if or ne nw 3 or not numarg 1 1 86400 not numarg 2 1 86400
+ret 2
+end
+ret 1
+end
+if or or kis kevery kis kdelay or kis ktmo kis kstop
+if or ne nw 2 not numarg 1 0 31536000
+ret 2
+end
+ret 1
+end
+if or kis klmax kis klkeep
+if or ne nw 2 not numarg 1 1 1099511627776
+ret 2
+end
+ret 1
+end
+if kis kauto
+if or ne nw 2 not or wis 1 wyes wis 1 wno
+ret 2
+end
+ret 1
+end
+ret 0
+end
+
+fn vexec to bool
+if lt nw 2
+ret false
+end
+if not okpath 1
+ret false
+end
+if not rootfile 1
+ret false
+end
+put rv RXL get gu GLNO
+ret true
+end
+
+fn vwatch to bool
+if ne nw 5
+ret false
+end
+if not okpath 1
+ret false
+end
+if or eq wlen 2 0 gt wlen 2 64
+ret false
+end
+put rv RWAT 1
+if not numarg 4 0 86400
+ret false
+end
+ret numarg 3 1 86400
+end
+
+fn vuser to bool
+if ne nw 2
+ret false
+end
+if not lookuser 1
+ret false
+end
+n = wlen 1
+if gt n 32
+ret false
+end
+for i ulong n
+put unb i wch 1 i
+end
+put rv RUNL n
+ret true
+end
+
+fn addgid g ulong to bool
+n = get rv RNG
+if ge n len gid
+ret false
+end
+put gid n g
+put rv RNG add n 1
+ret true
+end
+
+fn vgroups to bool
+if lt nw 2
+ret false
+end
+for i ulong sub nw 1
+g = lookgrp add i 1
+if lt g 0
+ret false
+end
+if not addgid ulong g
+ret false
+end
+end
+ret true
+end
+
+fn vgroup to bool
+if ne nw 2
+ret false
+end
+g = lookgrp 1
+if lt g 0
+ret false
+end
+put rv RGX ulong g
+ret true
+end
+
+note xb[a..b) equals text t.
+fn xeqt a ulong b ulong t view uchar * to bool
+if ne sub b a len t
+ret false
+end
+for i ulong len t
+if ne get xb add a i get t i
+ret false
+end
+end
+ret true
+end
+
+fn xbadgrp a ulong b ulong to bool
+if or or xeqt a b gdocker xeqt a b gsudo or xeqt a b gadm xeqt a b gdisk
+ret true
+end
+if or or xeqt a b glxd xeqt a b gkvm or xeqt a b gshadow or xeqt a b glibvirt xeqt a b gsysj
+ret true
+end
+ret false
+end
+
+note xb[a..b) equals the service user's name.
+fn xisuser a ulong b ulong to bool
+if ne sub b a get rv RUNL
+ret false
+end
+for i ulong sub b a
+if ne get xb add a i get unb i
+ret false
+end
+end
+ret true
+end
+
+fn lnend p ulong n ulong to ulong
+q = p
+while lt q n bound 999999
+if eq get xb q 10
+ret q
+end
+q = add q 1
+end
+ret n
+end
+
+note Is the user named in the member list (field 3) of the /etc/group line at p..e?
+fn ingrp p ulong e ulong to bool
+a = p
+for j ulong 3
+a = add xcolon a e 1
+if gt a e
+ret false
+end
+end
+while lt a e bound 99999
+b = a
+while and lt b e ne get xb b 44 bound 99999
+b = add b 1
+end
+if xisuser a b
+ret true
+end
+a = add b 1
+end
+ret false
+end
+
+note initgroups(3) done here so every supplementary group is checked: the user's member groups
+note from /etc/group are added; a privileged one (gid < 100 or a root-equivalent name) refuses.
+fn initgr to bool
+pset
+pstr tgroup
+r = rdx
+if lt r 0
+ret false
+end
+n = ulong r
+p = ulong 0
+while lt p n bound 99999
+e = lnend p n
+if ingrp p e
+f = xcolon p e
+g = xfield p e 2
+if or lt g 100 xbadgrp p f
+ret false
+end
+if not addgid ulong g
+ret false
+end
+end
+p = add e 1
+end
+ret true
+end
+
+fn vsecret to bool
+if ne nw 3
+ret false
+end
+if not okname get ws 1 get we 1
+ret false
+end
+if not okpath 2
+ret false
+end
+pset
+pword 2
+if not rootok 1
+ret false
+end
+if ne and stmode 63 0
+ret false
+end
+if not rootdirs
+ret false
+end
+put rv RSEC add get rv RSEC 1
+ret le get rv RSEC 8
+end
+
+fn vnet to bool
+if ne nw 2
+ret false
+end
+if wis 1 whost
+put rv RNET 0
+ret true
+end
+if wis 1 wnone
+put rv RNET 1
+ret true
+end
+if wis 1 wfilter
+put rv RNET 2
+ret true
+end
+ret false
+end
+
+fn vallow to bool
+if or lt nw 2 gt nw 3
+ret false
+end
+if not okaddr 1
+ret false
+end
+if eq nw 3
+ret okport 2
+end
+ret true
+end
+
+fn vlisten to bool
+if lt nw 3
+ret false
+end
+if not okport 1
+ret false
+end
+for i ulong sub nw 2
+if not okaddr add i 2
+ret false
+end
+end
+ret true
+end
+
+fn vsysg to bool
+if lt nw 2
+ret false
+end
+for i ulong sub nw 1
+k = add i 1
+if not or or wis k gss wis k gmnt wis k gns
+ret false
+end
+end
+put rv RSYS 1
+ret true
+end
+
+fn vsysd to bool
+if lt nw 2
+ret false
+end
+for i ulong sub nw 1
+k = add i 1
+if not or wis k gpriv wis k gres
+ret false
+end
+end
+ret true
+end
+
+fn vfam to bool
+if lt nw 2
+ret false
+end
+m = ulong 0
+for i ulong sub nw 1
+k = add i 1
+if wis k funix
+m = or m 1
+else
+if wis k finet
+m = or m 2
+else
+if wis k finet6
+m = or m 4
+else
+if wis k fnetl
+m = or m 8
+else
+ret false
+end
+end
+end
+end
+end
+put rv RFAM m
+ret true
+end
+
+fn yesno to long
+if ne nw 2
+ret -1
+end
+if wis 1 wyes
+ret 1
+end
+if wis 1 wno
+ret 0
+end
+ret -1
+end
+
+note Sandbox keys, part 1. Returns 1 ok, 0 no match, 2 bad value, 3 bad path.
+fn vbox1 to ulong
+if kis kexec
+if vexec
+ret 1
+end
+ret 3
+end
+if kis kenv
+if ne nw 2
+ret 2
+end
+e = envkeyend 1
+if or not okenvkey get ws 1 e eq e get we 1
+ret 2
+end
+ret 1
+end
+if kis kdir
+if or ne nw 2 not okpath 1
+ret 3
+end
+put rv RDIR get gu GLNO
+ret 1
+end
+if kis kumask
+v = woct 1
+if or ne nw 2 or lt v 0 gt v 511
+ret 2
+end
+put rv RUMK ulong v
+ret 1
+end
+if kis knice
+if or ne nw 2 not numarg 1 0 19
+ret 2
+end
+put rv RNIC ulong wnum 1
+ret 1
+end
+if kis kwatch
+if vwatch
+ret 1
+end
+ret 2
+end
+ret 0
+end
+
+fn vbox2 to ulong
+if kis kuser
+if vuser
+ret 1
+end
+ret 4
+end
+if kis kgroup
+if vgroup
+ret 1
+end
+ret 5
+end
+if kis kgroups
+if vgroups
+ret 1
+end
+ret 5
+end
+if kis kenvf
+if or ne nw 2 or not okpath 1 not rootfile 1
+ret 3
+end
+ret 1
+end
+if kis ksec
+if vsecret
+ret 1
+end
+ret 3
+end
+if kis kro
+if or ne nw 2 or not okpath 1 badro 1
+ret 3
+end
+ret 1
+end
+if kis krw
+if or ne nw 2 not okrw 1
+ret 3
+end
+ret 1
+end
+if kis khide
+if or ne nw 2 not okpath 1
+ret 3
+end
+ret 1
+end
+ret 0
+end
+
+fn vbox3 to ulong
+if kis knet
+if vnet
+ret 1
+end
+ret 2
+end
+if or kis kallow kis kdeny
+if vallow
+ret 1
+end
+ret 2
+end
+if kis klisten
+if vlisten
+ret 1
+end
+ret 2
+end
+if kis kndef
+if or ne nw 2 not or wis 1 waccept wis 1 wdrop
+ret 2
+end
+put rv RNDF 0
+if wis 1 wdrop
+put rv RNDF 1
+end
+ret 1
+end
+if kis kfam
+if vfam
+ret 1
+end
+ret 2
+end
+ret 0
+end
+
+fn bigarg k ulong to long
+if ne nw 2
+ret -1
+end
+ret wnum 1
+end
+
+fn vbox4 to ulong
+if or or kis kmem kis kswap or kis ktasks kis knofile
+v = bigarg 1
+if or lt v 0 and eq v 0 not kis kswap
+ret 2
+end
+if kis kmem
+put rv RMEM ulong v
+end
+if kis kswap
+put rv RSWP add ulong v 1
+end
+if kis ktasks
+put rv RTSK ulong v
+end
+if kis knofile
+put rv RNOF ulong v
+end
+ret 1
+end
+if kis kcpu
+if or ne nw 2 not numarg 1 1 100000
+ret 2
+end
+put rv RCPU ulong wnum 1
+ret 1
+end
+ret 0
+end
+
+fn vbox5 to ulong
+if kis kns
+v = yesno
+if lt v 0
+ret 2
+end
+put rv RNS ulong v
+ret 1
+end
+if kis kmdwe
+v = yesno
+if lt v 0
+ret 2
+end
+put rv RMDW ulong v
+ret 1
+end
+if kis ksys
+if vsysg
+ret 1
+end
+ret 2
+end
+if kis ksysd
+if vsysd
+ret 1
+end
+ret 2
+end
+if kis kserr
+if or ne nw 2 not or wis 1 weperm wis 1 wkill
+ret 2
+end
+put rv RERR 0
+if wis 1 weperm
+put rv RERR 1
+end
+ret 1
+end
+ret 0
+end
+
+fn vline to ulong
+r = vdaemon
+if ne r 0
+ret r
+end
+r = vbox1
+if ne r 0
+ret r
+end
+r = vbox2
+if ne r 0
+ret r
+end
+r = vbox3
+if ne r 0
+ret r
+end
+r = vbox4
+if ne r 0
+ret r
+end
+ret vbox5
+end
+
+fn defaults to void
+for i ulong len rv
+put rv i 0
+end
+put rv RMDW 1
+put rv RUID 0
+end
+
+fn vfail r ulong to int
+if eq r 0
+ret refln ekey
+end
+if eq r 3
+ret refln epath
+end
+if eq r 4
+ret refln euser
+end
+if eq r 5
+ret refln egroup
+end
+ret refln evalue
+end
+
+note Validate the whole file. 0 ok, else 2 (reported).
+fn validate to int
+defaults
+put gu GLNO 0
+p = ulong 0
+users = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if ne get gu GOVF 0
+ret refln etoo
+end
+if gt nw 0
+r = vline
+if ne r 1
+ret vfail r
+end
+if kis kuser
+users = add users 1
+end
+end
+end
+if or ne users 1 eq get rv RUID 0
+ret refuse euser
+end
+if gt get rv RGX 0
+put rv RGID get rv RGX
+end
+if not initgr
+ret refuse egroup
+end
+if eq get rv RXL 0
+ret refuse eexec
+end
+if eq get rv RSYS 0
+ret refuse esys
+end
+ret 0
+end
+
+note -------------------------------------------------------------- nftables script
+
+fn tblname to void
+abstr ttbl
+for i ulong get gu GSV
+c = get nmb i
+if eq c 45
+c = 95
+end
+ab1 c
+end
+end
+
+fn skuid to void
+abstr nft6
+abnum get rv RUID
+end
+
+fn nftrule k ulong verdict view uchar * to void
+skuid
+if isv6 1
+abstr nft7b
+else
+abstr nft7
+end
+abword 1
+if eq nw 3
+abstr nft10
+abword 2
+end
+abstr verdict
+end
+
+fn nftout to void
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis kallow
+nftrule 1 nft8
+end
+end
+p = 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis kdeny
+nftrule 1 nft9
+end
+end
+if eq get rv RNDF 1
+skuid
+abstr nft9
+end
+end
+
+fn nftlisten to void
+v6 = false
+for i ulong sub nw 2
+if isv6 add i 2
+v6 = true
+end
+end
+abstr nft12
+abword 1
+abstr nft13
+first = true
+for i ulong sub nw 2
+k = add i 2
+if not isv6 k
+if not first
+abstr tcom
+end
+abword k
+first = false
+end
+end
+abstr nft14
+if not v6
+abstr nft12
+abword 1
+abstr nft15
+end
+end
+
+note The nft script for this service in ab: the table is created empty, deleted and, for net
+note filter, recreated in one transaction, so a reload replaces the old rules atomically.
+fn nftscript to void
+abreset
+abstr nft1
+tblname
+abstr nft2
+tblname
+if eq get rv RNET 2
+abstr nft3
+tblname
+abstr nft4
+abnum get rv RUID
+abstr nft5
+nftout
+abstr nft11
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis klisten
+nftlisten
+end
+end
+abstr nft16
+else
+abstr tnl
+end
+end
+
+note ------------------------------------------------------------------ child runner
+
+fn mfd to long
+ret memfd tmemfd 0 len tmemfd 0
+end
+
+fn abtofd to long
+fd = mfd
+if lt fd 0
+ret fd
+end
+w = write int fd ab 0 get gu GAB
+if ne w long get gu GAB
+ret -5
+end
+s = fseek int fd 0 0
+ret fd
+end
+
+fn bptofd to long
+fd = mfd
+if lt fd 0
+ret fd
+end
+n = mul get rv RBPN 8
+w = write int fd bp 0 n
+if ne w long n
+ret -5
+end
+s = fseek int fd 0 0
+ret fd
+end
+
+note Run the exec packet pk as a child with stdin from /dev/null; its exit status, or -1.
+text tdevnull "/dev/null"
+fn runpk to long
+pid = fork
+if lt pid 0
+ret -1
+end
+if eq pid 0
+pset
+pstr tdevnull
+nfd = popen ORDO 0
+if ge nfd 0
+d = dupfd int nfd 0 0
+end
+r = execprog pk 0 get gu GPK
+exit 127
+end
+r = waitpid int pid stat4 0 4 0
+if ne r pid
+ret -1
+end
+ret long get stat4 1
+end
+
+fn nftapply to bool
+nftscript
+fd = abtofd
+if lt fd 0
+ret false
+end
+pkreset
+pkstr tnft
+pkstr tdashf
+pset
+pstr tpfd
+pnum ulong fd
+pkpth
+r = runpk
+c = fclose int fd
+ret eq r 0
+end
+
+fn prlself to bool
+pkreset
+pkstr tprlim
+pkstr r1
+pset
+pnum ulong getpid
+pkpth
+pkstr r2
+if gt get rv RNOF 0
+pset
+pstr r3
+pnum get rv RNOF
+pstr tcolon
+pnum get rv RNOF
+pkpth
+end
+ret eq runpk 0
+end
+
+note ------------------------------------------------------------------------ cgroup
+
+fn cgdir to void
+pset
+pstr tcgr
+end
+
+fn cgleaf to void
+cgdir
+pb 47
+pname
+end
+
+note Write ab's bytes to the file in pth. true on success.
+fn wrfile to bool
+fd = popen 524289 0
+if lt fd 0
+ret false
+end
+w = write int fd ab 0 get gu GAB
+c = fclose int fd
+ret eq w long get gu GAB
+end
+
+fn cgset f view uchar * v ulong to bool
+cgleaf
+pstr f
+abreset
+if eq v 0
+abstr cmax
+else
+abnum v
+end
+ret wrfile
+end
+
+fn cgpopulated to bool
+cgleaf
+pstr cevents
+r = rdx
+if le r 0
+ret false
+end
+n = ulong r
+for i ulong n
+if le add i len cpop n
+ok = true
+for j ulong len cpop
+if ne get xb add i j get cpop j
+ok = false
+end
+end
+if ok
+ret true
+end
+end
+end
+ret false
+end
+
+fn cgsetup to int
+cgdir
+r = makedir pth 0 plen 493
+if and lt r 0 ne r -17
+ret refpth ecg
+end
+cgdir
+pstr csub
+abreset
+abstr cctl
+if not wrfile
+ret refpth ecg
+end
+cgleaf
+r = makedir pth 0 plen 493
+if and lt r 0 ne r -17
+ret refpth ecg
+end
+if cgpopulated
+ret refuse erunning
+end
+if not cgset cmem get rv RMEM
+ret refpth ecg
+end
+if not cgset cpids get rv RTSK
+ret refpth ecg
+end
+cgleaf
+pstr ccpu
+abreset
+if eq get rv RCPU 0
+abstr cmax
+else
+abnum mul get rv RCPU 1000
+end
+abstr cperiod
+if not wrfile
+ret refpth ecg
+end
+if gt get rv RSWP 0
+if not cgset cswap sub get rv RSWP 1
+ret refpth ecg
+end
+end
+cgleaf
+pstr cprocs
+abreset
+abnum ulong getpid
+if not wrfile
+ret refpth ecg
+end
+ret 0
+end
+
+note ------------------------------------------------------------------- seccomp cBPF
+
+fn bi code ulong jt ulong jf ulong k ulong to void
+n = get rv RBPN
+o = mul n 8
+put bp o uchar and code 255
+put bp add o 1 uchar shr code 8
+put bp add o 2 uchar jt
+put bp add o 3 uchar jf
+put bp add o 4 uchar and k 255
+put bp add o 5 uchar and shr k 8 255
+put bp add o 6 uchar and shr k 16 255
+put bp add o 7 uchar shr k 24
+put rv RBPN add n 1
+end
+
+fn ldnr to void
+bi 32 0 0 0
+end
+
+fn ldarg i ulong to void
+bi 32 0 0 add 16 mul i 8
+end
+
+fn rdeny to ulong
+if eq get rv RERR 1
+ret 327681
+end
+ret 2147483648
+end
+
+fn retk k ulong to void
+bi 6 0 0 k
+end
+
+note Mark the syscall numbers of a group text (space-separated decimals) with v.
+fn setnums t view uchar * v uchar to void
+x = ulong 0
+have = false
+for i ulong len t
+c = get t i
+if and ge c 48 le c 57
+x = add mul x 10 ulong sub c 48
+have = true
+else
+if and have lt x 1024
+put sa x v
+end
+x = 0
+have = false
+end
+end
+if and have lt x 1024
+put sa x v
+end
+end
+
+fn sysgroups to void
+for i ulong 1024
+put sa i 0
+end
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis ksys
+for i ulong sub nw 1
+k = add i 1
+if wis k gss
+setnums sysss 1
+end
+if wis k gmnt
+setnums sysmnt 1
+end
+if wis k gns
+setnums sysns 1
+end
+end
+end
+end
+p = 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis ksysd
+for i ulong sub nw 1
+k = add i 1
+if wis k gpriv
+setnums syspriv 0
+end
+if wis k gres
+setnums sysres 0
+end
+end
+end
+end
+if eq get rv RNS 0
+put sa 97 0
+put sa 268 0
+end
+end
+
+note if nr == N and (arg & mask) != 0: return e.
+fn bmask n ulong a ulong m ulong e ulong to void
+bi 21 0 3 n
+ldarg a
+bi 69 0 1 m
+retk e
+ldnr
+end
+
+note if nr == N and (arg & m) == m: return e.
+fn ball n ulong a ulong m ulong e ulong to void
+bi 21 0 4 n
+ldarg a
+bi 84 0 0 m
+bi 21 0 1 m
+retk e
+ldnr
+end
+
+fn bonly n ulong e ulong to void
+bi 21 0 1 n
+retk e
+end
+
+note personality: only PER_LINUX (0) and the query 0xffffffff (LockPersonality).
+fn bpers to void
+bi 21 0 4 92
+ldarg 0
+bi 21 2 0 0
+bi 21 1 0 4294967295
+retk 327681
+ldnr
+end
+
+note socket/socketpair: the family must be one of the families line (RestrictAddressFamilies).
+fn bfam1 n ulong to void
+m = get rv RFAM
+k = ulong 0
+for i ulong 4
+if ne and shr m i 1 0
+k = add k 1
+end
+end
+bi 21 0 add k 2 n
+ldarg 0
+j = ulong 0
+if ne and m 1 0
+bi 21 sub k j 0 1
+j = add j 1
+end
+if ne and m 2 0
+bi 21 sub k j 0 2
+j = add j 1
+end
+if ne and m 4 0
+bi 21 sub k j 0 10
+j = add j 1
+end
+if ne and m 8 0
+bi 21 sub k j 0 16
+j = add j 1
+end
+retk 327777
+ldnr
+end
+
+note sched_setscheduler with SCHED_FIFO, SCHED_RR or SCHED_DEADLINE (RestrictRealtime).
+fn brt to void
+bi 21 0 7 119
+ldarg 1
+bi 84 0 0 1073741823
+bi 21 3 0 1
+bi 21 2 0 2
+bi 21 1 0 6
+bi 5 0 0 1
+retk 327681
+ldnr
+end
+
+fn seccomp to void
+put rv RBPN 0
+sysgroups
+bi 32 0 0 4
+bi 21 1 0 3221225655
+retk 2147483648
+ldnr
+bpers
+brt
+bonly 274 327681
+note RestrictSUIDSGID: no S_ISUID/S_ISGID mode bits on chmod, open and mknod families.
+bmask 52 1 3072 327681
+bmask 53 2 3072 327681
+bmask 452 2 3072 327681
+bmask 56 3 3072 327681
+bmask 34 2 3072 327681
+bmask 33 2 3072 327681
+bonly 437 327718
+if eq get rv RMDW 1
+ball 222 2 6 327681
+bmask 226 2 4 327681
+bmask 288 2 4 327681
+bmask 196 2 32768 327681
+end
+if gt get rv RFAM 0
+bfam1 198
+bfam1 199
+end
+if eq get rv RNS 0
+bmask 220 0 2114060416 327681
+bonly 435 327718
+end
+for i ulong 1024
+if eq get sa i 1
+bi 21 0 1 i
+retk 2147418112
+end
+end
+retk rdeny
+end
+
+fn nallowed to ulong
+c = ulong 0
+for i ulong 1024
+if eq get sa i 1
+c = add c 1
+end
+end
+ret c
+end
+
+note ------------------------------------------------------------------ bwrap arguments
+
+fn abline to void
+abword 1
+abz
+end
+
+note --perms 0755 --dir for every directory above the path in word 1 (bwrap otherwise makes
+note them 0700, which the unprivileged service cannot cross).
+fn abparents to void
+s = get ws 1
+e = get we 1
+p = add s 1
+while lt p e bound 4096
+if eq get sf p 47
+abarg b16
+abarg p0755
+abarg b17
+absf s p
+abz
+end
+p = add p 1
+end
+end
+
+fn abbinds to void
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if or kis kro kis krw
+abparents
+if kis kro
+abarg b10
+else
+abarg b11
+end
+abline
+abline
+end
+end
+p = 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis khide
+abparents
+abarg b16
+abarg p0000
+abarg b15
+abline
+end
+end
+end
+
+fn abenv to void
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis kenv
+e = envkeyend 1
+abarg b19
+absf get ws 1 e
+abz
+absf add e 1 get we 1
+abz
+end
+end
+end
+
+note envfile: KEY=VALUE lines of a root-owned file, '#' comments, optional matching quotes.
+fn efline a ulong b ulong chk bool to bool
+while and lt a b eq get xb a 32 bound 4096
+a = add a 1
+end
+if or eq a b eq get xb a 35
+ret true
+end
+q = a
+while lt q b bound 4096
+if eq get xb q 61
+break
+end
+q = add q 1
+end
+if or eq q b eq q a
+ret false
+end
+abarg b19
+for i ulong sub q a
+ab1 get xb add a i
+end
+abz
+v = add q 1
+w = b
+if ge sub w v 2
+c = get xb v
+if and or eq c 34 eq c 39 eq get xb sub w 1 c
+v = add v 1
+w = sub w 1
+end
+end
+if chk
+abstr tredact
+else
+for i ulong sub w v
+ab1 get xb add v i
+end
+end
+abz
+ret true
+end
+
+fn abenvf chk bool to int
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis kenvf
+pset
+pword 1
+r = rdx
+if lt r 0
+ret refpth eenvf
+end
+n = ulong r
+a = ulong 0
+while lt a n bound 100000
+b = a
+while lt b n bound 999999
+if eq get xb b 10
+break
+end
+b = add b 1
+end
+if not efline a b chk
+ret refpth eenvf
+end
+a = add b 1
+end
+end
+end
+ret 0
+end
+
+note secret NAME PATH: the root-only file is copied into a memfd that bwrap binds read-only at
+note /run/credentials/NAME inside this service's mount namespace (ImportCredential's shape).
+fn secone chk bool to int
+pset
+pword 2
+r = rdx
+if lt r 0
+ret refpth esecret
+end
+fd = long 99
+if not chk
+fd = mfd
+if lt fd 0
+ret refpth esecret
+end
+w = write int fd xb 0 ulong r
+s = fseek int fd 0 0
+end
+abarg b16
+abarg p0444
+abarg b21
+abnum ulong fd
+abz
+abstr pcredd
+abword 1
+abz
+put rv RCRD 1
+ret 0
+end
+
+fn absecrets chk bool to int
+if gt get rv RSEC 0
+abarg b16
+abarg p0755
+abarg b17
+abarg prun1
+abarg b16
+abarg p0755
+abarg b17
+abarg pcred
+end
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis ksec
+r = secone chk
+if ne r 0
+ret r
+end
+end
+end
+if eq get rv RCRD 1
+abarg b19
+abarg ecred
+abarg pcred
+end
+ret 0
+end
+
+fn kpsone a ulong e ulong to void
+abarg b24
+for r ulong 2
+for i ulong sub e a
+ab1 get kps add a i
+end
+abz
+end
+end
+
+note ProtectKernelTunables: /proc/sys and the other kernel knobs of the fresh /proc are bound
+note read-only over themselves (--ro-bind-try: some are absent on this kernel).
+fn prockt to void
+a = ulong 0
+for i ulong add len kps 1
+sp = true
+if lt i len kps
+sp = eq get kps i 32
+end
+if sp
+kpsone a i
+a = add i 1
+end
+end
+end
+
+fn abfixed to void
+abarg b1
+abarg b2
+abarg b3
+abarg b4
+abarg b5
+if eq get rv RNET 1
+abarg b6
+end
+if eq get rv RNS 0
+abarg b7
+end
+abarg b8
+abarg b9
+abarg b10
+abarg busr
+abarg busr
+abarg b12
+abarg bubin
+abarg bbin
+abarg b12
+abarg bulib
+abarg blib
+abarg b12
+abarg busbin
+abarg bsbin
+abarg b10
+abarg betc
+abarg betc
+abarg b13
+abarg bproc
+prockt
+abarg b14
+abarg bdev
+abarg b16
+abarg p1777
+abarg b15
+abarg btmp
+abarg b16
+abarg p0755
+abarg b17
+abarg bvar
+abarg b16
+abarg p1777
+abarg b15
+abarg bvtmp
+end
+
+note bwrap stops reading an --args file at "--" and drops what follows, so the command goes in
+note the exec packet itself: [nice] setpriv ... -- bwrap --args FD -- [aien-watch D S P] PROG ARGS.
+fn pkcmd to bool
+pkstr b22
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis kwatch
+pkstr twatch
+pkword 1
+pkword 2
+pkword 3
+pkword 4
+end
+end
+p = 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis kexec
+for i ulong sub nw 1
+if not pkroom wlen add i 1
+ret false
+end
+pkword add i 1
+end
+end
+end
+ret true
+end
+
+fn abchdir to void
+abarg b18
+if eq get rv RDIR 0
+abarg broot
+ret
+end
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if kis kdir
+abline
+end
+end
+end
+
+note Build the complete bwrap argument list in ab. chk: dry run (no secrets read, no memfds).
+fn bwargs chk bool sfd long to int
+abreset
+abfixed
+abbinds
+r = absecrets chk
+if ne r 0
+ret r
+end
+abchdir
+abenv
+r = abenvf chk
+if ne r 0
+ret r
+end
+note ProtectSystem=strict: the sandbox's own root (where bwrap made /var, /opt, ...) is remounted
+note read-only last; the declared rw binds and the private /tmp and /var/tmp stay writable.
+abarg b25
+abarg broot
+abarg b20
+abnum ulong sfd
+abz
+ret 0
+end
+
+note ------------------------------------------------------------------- exec chain
+
+fn grpcsv to void
+for i ulong get rv RNG
+if gt i 0
+pb 44
+end
+pnum get gid i
+end
+end
+
+fn chain afd long to bool
+pkreset
+if gt get rv RNIC 0
+pkstr tnice
+pkstr tdashn
+pset
+pnum get rv RNIC
+pkpth
+end
+pkstr tsetpr
+pset
+pstr s1
+pnum get rv RUID
+pkpth
+pset
+pstr s2
+pnum get rv RGID
+pkpth
+if gt get rv RNG 0
+pset
+pstr s3
+grpcsv
+pkpth
+else
+pkstr s4
+end
+pkstr s5
+pkstr s6
+pkstr s7
+pkstr s8
+pkstr b22
+pkstr tbwrap
+pkstr b23
+pset
+pnum ulong afd
+pkpth
+ret pkcmd
+end
+
+note ---------------------------------------------------------------------- verbs
+
+fn loadsvc to int
+r = hostok
+if ne r 0
+ret r
+end
+svcpth
+n = rdfile
+if lt n 0
+ret refpth eread
+end
+if gt n 65000
+ret refpth eread
+end
+ret validate
+end
+
+fn docheck to int
+ostr ochain
+oflush 1
+if not chain 3
+ret refuse etoo
+end
+pkdump
+nftscript
+ostr onft
+for i ulong get gu GAB
+ob1 get ab i
+end
+oflush 1
+seccomp
+ostr osec
+onum long get rv RBPN
+ostr oallow
+onum long nallowed
+ostr tnl
+oflush 1
+r = bwargs true 4
+if ne r 0
+ret r
+end
+abdump
+ret 0
+end
+
+fn pkdump to void
+o = ulong 2
+for i ulong get gu GPKN
+n = or ulong get pk o shl ulong get pk add o 1 8
+for j ulong n
+ob1 get pk add add o 2 j
+end
+ob1 32
+o = add add o 2 n
+end
+ostr tnl
+oflush 1
+end
+
+fn abdump to void
+for i ulong get gu GAB
+c = get ab i
+if eq c 0
+ostr tnl
+else
+ob1 c
+end
+if gt get gu GOB 60000
+oflush 1
+end
+end
+oflush 1
+end
+
+fn dorun to int
+r = cgsetup
+if ne r 0
+ret r
+end
+if not nftapply
+ret refuse enft
+end
+if not prlself
+ret refuse eprl
+end
+m = umask int get rv RUMK
+if eq get rv RUMK 0
+m = umask 18
+end
+seccomp
+sfd = bptofd
+if lt sfd 0
+ret refuse eexecf
+end
+r = bwargs false sfd
+if ne r 0
+ret r
+end
+afd = abtofd
+if lt afd 0
+ret refuse eexecf
+end
+if not chain afd
+ret refuse etoo
+end
+x = execprog pk 0 get gu GPK
+ret refuse eexecf
+end
+
+fn dostop sig int to int
+cgleaf
+pstr cprocs
+r = rdx
+if lt r 0
+ret 0
+end
+n = ulong r
+v = long 0
+have = false
+for i ulong n
+c = get xb i
+if and ge c 48 le c 57
+v = add mul v 10 long sub c 48
+have = true
+else
+if and have not isbwrap v
+k = killpid int v sig
+end
+v = 0
+have = false
+end
+end
+ret 0
+end
+
+text texe "/exe"
+
+note bwrap's own processes (namespace monitor and init) run as the service user too; stop sends
+note the signal past them to the service, whose exit then ends the sandbox.
+fn isbwrap pid long to bool
+pset
+pstr tproc
+pnum ulong pid
+pstr texe
+r = readlnk pth 0 plen ebuf 0 len ebuf
+if ne r long len tbwrap
+ret false
+end
+for i ulong len tbwrap
+if ne get ebuf i get tbwrap i
+ret false
+end
+end
+ret true
+end
+
+fn dokill to int
+cgleaf
+pstr ckill
+abreset
+abstr c1
+w = wrfile
+for i ulong 100
+if not cgpopulated
+ret 0
+end
+s = sleepns 50000000
+end
+ret 1
+end
+
+fn main to int
+if or ne getuid 0 ne geteuid 0
+ret refuse enotroot
+end
+if ne argcnt 3
+ret refuse eusage
+end
+n = arg 2
+if not okname2 n
+ret refuse ename
+end
+for i ulong n
+put nmb i get av i
+end
+put gu GSV n
+v = arg 1
+r = loadsvc
+if ne r 0
+ret r
+end
+v = arg 1
+if aveq v vrun
+ret dorun
+end
+if aveq v vcheck
+ret docheck
+end
+if aveq v vstop
+ret dostop 15
+end
+if aveq v vkill
+ret dokill
+end
+ret refuse eusage
+end

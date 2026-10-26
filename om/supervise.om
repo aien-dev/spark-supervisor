@@ -1,0 +1,1840 @@
+note aien-supervise: AIEN's process supervisor, no systemd. One unprivileged daemon per operator
+note account (cron @reboot + per-minute `ensure`) runs the services declared in
+note   ~/.config/aien-supervise/services/NAME.svc   (user services: run as this account), and
+note   /etc/aien-supervise/services/NAME.svc        (sandboxed services: started through
+note                                                 `sudo -n aien-supervise-root run NAME`).
+note It restarts with exponential backoff, runs oneshot services on a period (timers), pipes each
+note service's output into state/log/NAME.log with size rotation, and takes start/stop/restart
+note requests through state/ctl. Commands: run | ensure | status [NAME] | start|stop|restart NAME
+note | check [NAME] | shutdown.
+text tsudo "/usr/bin/sudo"
+text tdn "-n"
+text tenv "/usr/bin/env"
+text tdi "-i"
+text tnice "/usr/bin/nice"
+text twatch "/usr/local/libexec/aien-supervise/aien-watch"
+text thelp "/usr/local/libexec/aien-supervise/aien-supervise-root"
+text trdir "/etc/aien-supervise/services"
+text tlst "/.local/state/aien-supervise"
+text tlcf "/.config/aien-supervise/services"
+text thome "HOME"
+text estate "AIEN_SUPERVISE_STATE"
+text euser "AIEN_SUPERVISE_USERDIR"
+text eroot "AIEN_SUPERVISE_ROOTDIR"
+text ehelp "AIEN_SUPERVISE_HELPER"
+text tselfx "/proc/self/exe"
+text tdevnul "/dev/null"
+text dctl "/ctl"
+text dst "/st"
+text dlog "/log"
+text fpid "/daemon.pid"
+text flog "/daemon.log"
+text flast ".last"
+text xlog ".log"
+text xtmp ".tmp"
+text dot "."
+text vrun "run"
+text vstop "stop"
+text vkill "kill"
+text vstart "start"
+text vrestart "restart"
+text vstatus "status"
+text vensure "ensure"
+text vcheck "check"
+text vshut "shutdown"
+text vexit "exit"
+text vall "all"
+text kexec "exec"
+text ktype "type"
+text krst "restart"
+text kback "backoff"
+text kevery "every"
+text kdelay "delay"
+text ktmo "timeout"
+text kstop "stoptime"
+text kauto "autostart"
+text klmax "log-max"
+text klkeep "log-keep"
+text kenv "env"
+text kdir "dir"
+text kumask "umask"
+text knice "nice"
+text kwatch "watch"
+text woneshot "oneshot"
+text wsimple "simple"
+text walways "always"
+text wonfail "on-failure"
+text wno "no"
+text wyes "yes"
+text s0 "idle"
+text s1 "running"
+text s2 "backoff"
+text s3 "stopping"
+text s4 "stopped"
+text s5 "failed"
+text s6 "waiting"
+text s7 "error"
+text mstart "started pid="
+text mexit "exited status="
+text msig "killed signal="
+text mnext "backoff next_in_s="
+text mstop "stop requested"
+text mkill "stop timeout, killing"
+text mtmo "timeout, stopping"
+text mbad "service file refused: "
+text mgone "service file removed"
+text mfork "fork failed"
+text mpipe "pipe failed"
+text madd "loaded "
+text mroot " (sandboxed)"
+text mdup "duplicate name, ignored: "
+text mexec "exec failed\n"
+text mdaemon "aien-supervise: "
+text mup "daemon running pid="
+text mdown "daemon not running"
+text mrunning "already running pid="
+text musage "usage: aien-supervise run|ensure|status [NAME]|start|stop|restart NAME|check [NAME]|shutdown"
+text mnoname "no such service: "
+text mnoack "request not taken by the daemon within 20 s (is it running?)"
+text mok "ok "
+text mfail "FAIL "
+text ckey "unknown key: "
+text cval "bad value: "
+text cexec "missing exec"
+text cline " line "
+text f1 " state="
+text f2 " pid="
+text f3 " runs="
+text f4 " last="
+text f5 " since="
+text f6 " next_in_s="
+text f7 " sandboxed="
+text fnone "-"
+text fexit "exit:"
+text fsig "signal:"
+text tsb "user ro rw hide envfile secret net allow deny listen net-default group groups memory-max memory-swap-max tasks-max cpu-quota nofile namespaces syscalls syscalls-deny syscall-error families mdwe"
+const MAXS ulong 48
+const NS long 1000000000
+global bst uchar 1024
+global bud uchar 1024
+global brd uchar 1024
+global bhl uchar 1024
+global self uchar 1024
+global sv ulong 32
+global snm uchar 1536
+global snl ulong 48
+global sro ulong 48
+global sty ulong 48
+global srs ulong 48
+global sbmn ulong 48
+global sbmx ulong 48
+global sev ulong 48
+global sdl ulong 48
+global stmo ulong 48
+global sstp ulong 48
+global slmx ulong 48
+global slkp ulong 48
+global sau ulong 48
+global sumk ulong 48
+global spid long 48
+global spfd long 48
+global sst ulong 48
+global snx long 48
+global sbk ulong 48
+global sbg long 48
+global sbr long 48
+global sex long 48
+global srn ulong 48
+global sdn ulong 48
+global sdd long 48
+global slf long 48
+global sls ulong 48
+global srq ulong 48
+global sgn ulong 48
+global scl ulong 48
+global sdt ulong 48
+global sseen ulong 48
+global slast long 48
+global stf ulong 48
+global rb uchar 65536
+global st4 uchar 4
+global pfd uchar 8
+note Slots of sv.
+const VST ulong 0
+const VUD ulong 1
+const VRD ulong 2
+const VHL ulong 3
+const VSELF ulong 4
+const VN ulong 5
+const VEXIT ulong 6
+const VSCAN ulong 7
+const VBEAT ulong 8
+const VBAD ulong 9
+const VCHK ulong 10
+
+note ------------------------------------------------------------------- base paths
+
+fn bset b ulong to void
+pset
+if eq b 0
+for i ulong get sv VST
+pb get bst i
+end
+end
+if eq b 1
+for i ulong get sv VUD
+pb get bud i
+end
+end
+if eq b 2
+for i ulong get sv VRD
+pb get brd i
+end
+end
+if eq b 3
+for i ulong get sv VHL
+pb get bhl i
+end
+end
+end
+
+note Copy av[0..n) to a base buffer.
+fn bstore b ulong n ulong to void
+for i ulong n
+if eq b 0
+put bst i get av i
+end
+if eq b 1
+put bud i get av i
+end
+if eq b 2
+put brd i get av i
+end
+if eq b 3
+put bhl i get av i
+end
+end
+if eq b 0
+put sv VST n
+end
+if eq b 1
+put sv VUD n
+end
+if eq b 2
+put sv VRD n
+end
+if eq b 3
+put sv VHL n
+end
+end
+
+fn home to ulong
+r = envget thome
+if lt r 1
+ret 0
+end
+ret ulong r
+end
+
+fn pthtoav to ulong
+n = get gu GPT
+for i ulong n
+put av i get pth i
+end
+ret n
+end
+
+fn bases to bool
+r = envget estate
+if gt r 0
+bstore 0 ulong r
+else
+h = home
+if eq h 0
+ret false
+end
+pset
+pav h
+pstr tlst
+bstore 0 pthtoav
+end
+r = envget euser
+if gt r 0
+bstore 1 ulong r
+else
+h = home
+pset
+pav h
+pstr tlcf
+bstore 1 pthtoav
+end
+r = envget eroot
+if gt r 0
+bstore 2 ulong r
+else
+pset
+pstr trdir
+bstore 2 pthtoav
+end
+r = envget ehelp
+if gt r 0
+bstore 3 ulong r
+else
+pset
+pstr thelp
+bstore 3 pthtoav
+end
+ret true
+end
+
+fn mkdirs to void
+bset 0
+r = makedir pth 0 plen 448
+bset 0
+pstr dctl
+r = makedir pth 0 plen 448
+bset 0
+pstr dst
+r = makedir pth 0 plen 448
+bset 0
+pstr dlog
+r = makedir pth 0 plen 448
+end
+
+note ------------------------------------------------------------------ service table
+
+fn pname i ulong to void
+o = mul i 32
+for j ulong get snl i
+pb get snm add o j
+end
+end
+
+fn oname i ulong to void
+o = mul i 32
+for j ulong get snl i
+ob1 get snm add o j
+end
+end
+
+fn svcfile i ulong to void
+if eq get sro i 1
+bset 2
+else
+bset 1
+end
+pb 47
+pname i
+pstr tsvc
+end
+
+fn logpth i ulong to void
+bset 0
+pstr dlog
+pb 47
+pname i
+pstr xlog
+end
+
+fn findsvc n ulong to long
+for i ulong get sv VN
+if eq get snl i n
+o = mul i 32
+ok = true
+for j ulong n
+if ne get snm add o j get av j
+ok = false
+end
+end
+if ok
+ret long i
+end
+end
+end
+ret -1
+end
+
+note Find directory entry k minus its last x bytes among the services.
+fn finddn k ulong x ulong to long
+n = sub get dnl k x
+for i ulong get sv VN
+if eq get snl i n
+o = mul i 32
+ok = true
+for j ulong n
+if ne get snm add o j dnch k j
+ok = false
+end
+end
+if ok
+ret long i
+end
+end
+end
+ret -1
+end
+
+note ------------------------------------------------------------------ event output
+
+fn stamp to void
+otime nowsec
+ob1 32
+end
+
+fn evflush i ulong to void
+n = get gu GOB
+w = write 1 ob 0 n
+if ge get slf i 0
+w = write int get slf i ob 0 n
+if gt w 0
+put sls i add get sls i ulong w
+end
+end
+put gu GOB 0
+end
+
+fn evbeg i ulong to void
+put gu GOB 0
+stamp
+oname i
+ob1 32
+end
+
+fn ev i ulong t view uchar * to void
+evbeg i
+ostr t
+ostr tnl
+evflush i
+end
+
+fn evn i ulong t view uchar * v long to void
+evbeg i
+ostr t
+onum v
+ostr tnl
+evflush i
+end
+
+note ------------------------------------------------------------------------- logs
+
+fn logopen i ulong to void
+if ge get slf i 0
+ret
+end
+logpth i
+fd = popen OAPP 416
+put slf i fd
+if ge fd 0
+r = fstat int fd stb 0 128
+put sls i stsize
+end
+end
+
+note rename pth (as left by the caller in av) -> pth
+fn mvlog i ulong a ulong b ulong to void
+pkreset
+logpth i
+if gt a 0
+pb 46
+pnum a
+end
+pkpth
+logpth i
+pb 46
+pnum b
+pkpth
+r = renames pk 0 get gu GPK 0
+end
+
+fn rotate i ulong to void
+c = fclose int get slf i
+put slf i -1
+k = get slkp i
+while gt k 1 bound 1000
+mvlog i sub k 1 k
+k = sub k 1
+end
+mvlog i 0 1
+put sls i 0
+logopen i
+end
+
+fn logneed i ulong n ulong to void
+logopen i
+if gt add get sls i n get slmx i
+if gt get sls i 0
+rotate i
+end
+end
+end
+
+fn logrb i ulong n ulong to void
+logneed i n
+fd = get slf i
+if lt fd 0
+ret
+end
+w = write int fd rb 0 n
+if gt w 0
+put sls i add get sls i ulong w
+end
+end
+
+note Move everything readable from the service's pipe into its log.
+fn drain i ulong to void
+fd = get spfd i
+if lt fd 0
+ret
+end
+for t ulong 64
+r = waitio int fd 25 0
+if le r 0
+ret
+end
+n = read int fd rb 0 len rb
+if le n 0
+c = fclose int fd
+put spfd i -1
+ret
+end
+logrb i ulong n
+end
+end
+
+note ------------------------------------------------------------- service-file load
+
+fn dkey to bool
+ret or or or wis 0 ktype wis 0 krst or wis 0 kback wis 0 kevery or or wis 0 kdelay wis 0 ktmo or wis 0 kstop wis 0 kauto
+end
+
+fn ukey to bool
+ret or or or wis 0 klmax wis 0 klkeep or wis 0 kenv wis 0 kexec or or wis 0 kdir wis 0 kumask or wis 0 knice wis 0 kwatch
+end
+
+note Is word 0 one of the sandbox keys (only valid in the root directory)?
+fn tsbeq a ulong n ulong to bool
+if ne n wlen 0
+ret false
+end
+s = get ws 0
+for j ulong n
+if ne get sf add s j get tsb add a j
+ret false
+end
+end
+ret true
+end
+
+fn tsbsp i ulong to bool
+if eq i len tsb
+ret true
+end
+ret eq get tsb i 32
+end
+
+fn sbkey to bool
+a = ulong 0
+for i ulong add len tsb 1
+if tsbsp i
+if tsbeq a sub i a
+ret true
+end
+a = add i 1
+end
+end
+ret false
+end
+
+fn numw k ulong lo long hi long to long
+v = wnum k
+if or lt v lo gt v hi
+ret -1
+end
+ret v
+end
+
+fn cdefaults i ulong to void
+put sty i 0
+put srs i 1
+put sbmn i 1
+put sbmx i 300
+put sev i 0
+put sdl i 0
+put stmo i 0
+put sstp i 10
+put slmx i 10485760
+put slkp i 3
+put sau i 1
+put sumk i 18
+put sdt i 0
+end
+
+note Apply one daemon key; false on a bad value.
+fn dapply i ulong to bool
+if wis 0 ktype
+if ne nw 2
+ret false
+end
+if wis 1 woneshot
+put sty i 1
+put srs i 0
+ret true
+end
+ret wis 1 wsimple
+end
+if wis 0 krst
+if ne nw 2
+ret false
+end
+if wis 1 walways
+put srs i 2
+ret true
+end
+if wis 1 wonfail
+put srs i 1
+ret true
+end
+if wis 1 wno
+put srs i 0
+ret true
+end
+ret false
+end
+if wis 0 kback
+a = numw 1 1 86400
+b = numw 2 1 86400
+if or ne nw 3 or lt a 0 lt b a
+ret false
+end
+put sbmn i ulong a
+put sbmx i ulong b
+ret true
+end
+ret dapply2 i
+end
+
+fn dapply2 i ulong to bool
+v = long -1
+if eq nw 2
+v = numw 1 0 31536000
+end
+if lt v 0
+ret false
+end
+if wis 0 kevery
+put sev i ulong v
+end
+if wis 0 kdelay
+put sdl i ulong v
+end
+if wis 0 ktmo
+put stmo i ulong v
+end
+if wis 0 kstop
+put sstp i ulong v
+end
+if wis 0 kauto
+put sau i 0
+if wis 1 wyes
+put sau i 1
+end
+end
+ret true
+end
+
+fn uapply i ulong to bool
+if or wis 0 klmax wis 0 klkeep
+v = long -1
+if eq nw 2
+v = numw 1 1 1099511627776
+end
+if lt v 0
+ret false
+end
+if wis 0 klmax
+put slmx i ulong v
+else
+put slkp i ulong v
+end
+ret true
+end
+if wis 0 kexec
+if or lt nw 2 not okpath 1
+ret false
+end
+put sdt i 1
+ret true
+end
+if wis 0 kumask
+v = woct 1
+if or ne nw 2 or lt v 0 gt v 511
+ret false
+end
+put sumk i ulong v
+ret true
+end
+ret true
+end
+
+fn cerr t view uchar * i ulong to void
+put gu GOB 0
+stamp
+oname i
+ob1 32
+ostr mbad
+oword 0
+ostr cline
+onum long get gu GLNO
+ostr tnl
+evflush i
+end
+
+note Load the service file of i into sf and its daemon settings. false = refused (reported).
+fn ldsvc i ulong to bool
+cdefaults i
+svcfile i
+r = rdfile
+if or lt r 0 gt r 65000
+put gu GOB 0
+stamp
+oname i
+ob1 32
+ostr mbad
+opth
+ostr tnl
+evflush i
+ret false
+end
+put gu GLNO 0
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if gt nw 0
+ok = true
+if dkey
+ok = dapply i
+else
+if ukey
+ok = uapply i
+else
+if not and eq get sro i 1 sbkey
+cerr ckey i
+ret false
+end
+end
+end
+if not ok
+cerr cval i
+ret false
+end
+end
+end
+if eq get sdt i 0
+cerr cexec i
+ret false
+end
+ret true
+end
+
+note ------------------------------------------------------------- exec packets
+
+
+note sudo -n HELPER VERB NAME
+fn pkhelp i ulong v view uchar * to void
+pkreset
+pkstr tsudo
+pkstr tdn
+bset 3
+pkpth
+pkstr v
+pset
+pname i
+pkpth
+end
+
+note User service: env -i ENV... [nice -n N] [aien-watch DIR SUF PER] PROG ARGS (from sf).
+fn pkuser i ulong to bool
+pkreset
+pkstr tenv
+pkstr tdi
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if and gt nw 1 wis 0 kenv
+if not pkroom wlen 1
+ret false
+end
+pkword 1
+end
+end
+p = 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if and eq nw 2 wis 0 knice
+pkstr tnice
+pkstr tdn
+pkword 1
+end
+end
+p = 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if and eq nw 5 wis 0 kwatch
+pkstr twatch
+pkword 1
+pkword 2
+pkword 3
+pkword 4
+end
+end
+ret pkexec
+end
+
+fn pkexec to bool
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if and gt nw 1 wis 0 kexec
+for k ulong sub nw 1
+if not pkroom wlen add k 1
+ret false
+end
+pkword add k 1
+end
+end
+end
+ret true
+end
+
+note The dir line of a user service into pth (empty when none).
+fn udir to void
+pset
+p = ulong 0
+while lt p get gu GSF bound 100000
+p = lnext p
+if and eq nw 2 wis 0 kdir
+pset
+pword 1
+end
+end
+end
+
+note ---------------------------------------------------------------- process control
+
+fn nullfd to long
+pset
+pstr tdevnul
+ret popen ORDO 0
+end
+
+note Run pk to completion with stdin /dev/null (helper stop/kill calls). Its status, or -1.
+fn runwait to long
+pid = fork
+if lt pid 0
+ret -1
+end
+if eq pid 0
+nf = nullfd
+if ge nf 0
+d = dupfd int nf 0 0
+end
+r = execprog pk 0 get gu GPK
+exit 127
+end
+r = waitpid int pid st4 0 4 0
+if ne r pid
+ret -1
+end
+ret long get st4 1
+end
+
+fn helper i ulong v view uchar * to long
+pkhelp i v
+ret runwait
+end
+
+fn now to long
+ret monons
+end
+
+fn setst i ulong s ulong to void
+put sst i s
+put sv VBEAT 1
+end
+
+note Start service i: load its file, open a pipe, fork, exec. Returns false when not started.
+fn start i ulong to bool
+if not ldsvc i
+put sbk i 9
+backoff i 0
+ret false
+end
+logopen i
+if eq get sro i 0
+if not pkuser i
+cerr cval i
+ret false
+end
+udir
+else
+if eq get scl i 0
+r = helper i vkill
+put scl i 1
+end
+pkhelp i vrun
+pset
+end
+r = pipefds pfd 0 8 524288
+if ne r 0
+ev i mpipe
+ret false
+end
+rd = long or ulong get pfd 0 shl ulong get pfd 1 8
+wr = long or ulong get pfd 4 shl ulong get pfd 5 8
+pid = fork
+if lt pid 0
+c = fclose int rd
+c = fclose int wr
+ev i mfork
+ret false
+end
+if eq pid 0
+child i int wr
+end
+c = fclose int wr
+put spid i pid
+put spfd i rd
+put sbg i now
+put sbr i nowsec
+put srn i add get srn i 1
+put srq i 0
+put stf i 0
+setst i 1
+evn i mstart pid
+ret true
+end
+
+fn child i ulong wr int to void
+s = setsid
+if eq get sro i 0
+m = umask int get sumk i
+if gt get gu GPT 0
+c = chdir pth 0 plen
+end
+end
+nf = nullfd
+if ge nf 0
+d = dupfd int nf 0 0
+end
+d = dupfd wr 1 0
+d = dupfd wr 2 0
+r = execprog pk 0 get gu GPK
+w = write 2 mexec 0 len mexec
+exit 127
+end
+
+fn sendterm i ulong to void
+if eq get sro i 1
+r = helper i vstop
+else
+r = killpid neg int get spid i 15
+end
+end
+
+fn sendkill i ulong to void
+if eq get sro i 1
+r = helper i vkill
+else
+r = killpid neg int get spid i 9
+end
+end
+
+fn stopsvc i ulong to void
+if le get spid i 0
+if ne get sst i 1
+setst i 4
+end
+ret
+end
+if eq get sst i 3
+ret
+end
+ev i mstop
+sendterm i
+setst i 3
+put sdd i add now mul long get sstp i NS
+end
+
+note Schedule a restart after the backoff delay (seconds) min(bmin*2^k, bmax).
+fn backoff i ulong ran long to void
+if ge ran mul 60 NS
+put sbk i 0
+end
+d = get sbmn i
+k = get sbk i
+if gt k 30
+k = 30
+end
+d = shl d k
+if or gt d get sbmx i eq d 0
+d = get sbmx i
+end
+put sbk i add get sbk i 1
+put snx i add now mul long d NS
+setst i 2
+evn i mnext long d
+end
+
+fn wrlast i ulong to void
+bset 0
+pstr dst
+pb 47
+pname i
+pstr flast
+fd = popen OTRU 384
+if ge fd 0
+put gu GOB 0
+onum get slast i
+ostr tnl
+w = write int fd ob 0 get gu GOB
+put gu GOB 0
+c = fclose int fd
+end
+end
+
+fn rdlast i ulong to long
+bset 0
+pstr dst
+pb 47
+pname i
+pstr flast
+fd = popen ORDO 0
+if lt fd 0
+ret 0
+end
+r = read int fd ebuf 0 32
+c = fclose int fd
+v = long 0
+if le r 0
+ret 0
+end
+for j ulong ulong r
+ch = get ebuf j
+if and ge ch 48 le ch 57
+v = add mul v 10 long sub ch 48
+end
+end
+ret v
+end
+
+note A child exited with raw wait status st.
+fn exited i ulong st ulong to void
+drain i
+fd = get spfd i
+if ge fd 0
+c = fclose int fd
+put spfd i -1
+end
+put spid i 0
+put sex i long st
+ran = sub now get sbg i
+if ne and st 127 0
+evn i msig long and st 127
+else
+evn i mexit long shr st 8
+end
+ok = eq st 0
+if or or eq get sdn i 1 eq get sst i 3 eq get sgn i 1
+setst i 4
+if and eq get srq i 1 eq get sgn i 0
+put sdn i 0
+put srq i 0
+put sbk i 0
+put snx i now
+setst i 2
+end
+ret
+end
+if eq get sty i 1
+if ok
+put slast i nowsec
+wrlast i
+put sbk i 0
+if gt get sev i 0
+put snx i add now mul long get sev i NS
+setst i 6
+ret
+end
+setst i 4
+ret
+end
+if gt get srs i 0
+backoff i ran
+ret
+end
+if gt get sev i 0
+put snx i add now mul long get sev i NS
+setst i 6
+ret
+end
+setst i 5
+ret
+end
+if or eq get srs i 2 and eq get srs i 1 not ok
+backoff i ran
+ret
+end
+if ok
+setst i 4
+else
+setst i 5
+end
+end
+
+note ------------------------------------------------------------------- one tick
+
+fn tick1 i ulong to void
+drain i
+pid = get spid i
+if gt pid 0
+r = waitpid int pid st4 0 4 1
+if eq r pid
+st = or ulong get st4 0 shl ulong get st4 1 8
+exited i st
+ret
+end
+t = now
+if and or eq get sst i 3 eq get stf i 1 ge t get sdd i
+ev i mkill
+sendkill i
+put sdd i add t mul 5 NS
+ret
+end
+if and timedout i t eq get stf i 0
+ev i mtmo
+sendterm i
+put stf i 1
+put sdd i add t mul long get sstp i NS
+end
+ret
+end
+if and eq get sdn i 0 eq get sgn i 0
+s = get sst i
+if and or eq s 2 eq s 6 ge now get snx i
+b = start i
+end
+end
+end
+
+fn timedout i ulong t long to bool
+if or ne get sty i 1 eq get stmo i 0
+ret false
+end
+if ne get sst i 1
+ret false
+end
+lim = mul long get stmo i NS
+ret ge sub t get sbg i lim
+end
+
+note ----------------------------------------------------------------- scanning
+
+fn addsvc k ulong root ulong to void
+i = get sv VN
+if ge i MAXS
+ret
+end
+n = sub get dnl k 4
+o = mul i 32
+for j ulong n
+put snm add o j dnch k j
+end
+put snl i n
+put sro i root
+put spid i 0
+put spfd i -1
+put slf i -1
+put sex i -1
+put srn i 0
+put sdn i 0
+put srq i 0
+put sgn i 0
+put scl i 0
+put sbk i 0
+put sseen i 1
+put sv VN add i 1
+ok = ldsvc i
+evbeg i
+ostr madd
+if eq root 1
+ostr mroot
+end
+ostr tnl
+evflush i
+put slast i rdlast i
+t = now
+d = mul long get sdl i NS
+put snx i add t d
+if and eq get sty i 1 gt get sev i 0
+due = sub add get slast i long get sev i nowsec
+if gt mul due NS d
+put snx i add t mul due NS
+end
+end
+setst i 6
+if or not ok eq get sau i 0
+put sdn i 1
+setst i 4
+if not ok
+setst i 7
+end
+end
+end
+
+note A directory entry k that names a service file: NAME.svc with a valid NAME.
+fn svcent k ulong to bool
+if not dnends k tsvc
+ret false
+end
+n = sub get dnl k 4
+if or eq n 0 gt n 32
+ret false
+end
+if eq dnch k 0 45
+ret false
+end
+for j ulong n
+c = dnch k j
+if not or or and ge c 97 le c 122 and ge c 48 le c 57 eq c 45
+ret false
+end
+end
+ret true
+end
+
+fn scandir root ulong to void
+if eq root 1
+bset 2
+else
+bset 1
+end
+r = lsdir
+if lt r 0
+ret
+end
+for k ulong get gu GDC
+if svcent k
+f = finddn k 4
+if lt f 0
+addsvc k root
+else
+i = ulong f
+if eq get sro i root
+put sseen i 1
+if eq get sgn i 1
+put sgn i 0
+put sdn i 0
+put sbk i 0
+put snx i now
+setst i 2
+end
+else
+put gu GOB 0
+stamp
+ostr mdup
+dname2 k
+ostr tnl
+oflush 1
+end
+end
+end
+end
+end
+
+note Rescan both directories: add new services; stop services whose file is gone.
+fn rescan to void
+for i ulong get sv VN
+put sseen i 0
+end
+scandir 1
+scandir 0
+n = get sv VN
+for i ulong n
+if and eq get sseen i 0 eq get sgn i 0
+put sgn i 1
+ev i mgone
+stopsvc i
+end
+end
+end
+
+fn dname2 k ulong to void
+o = get dno k
+for i ulong get dnl k
+ob1 get dnb add o i
+end
+end
+
+note --------------------------------------------------------------------- states
+
+fn ostate s ulong to void
+if eq s 0
+ostr s0
+end
+if eq s 1
+ostr s1
+end
+if eq s 2
+ostr s2
+end
+if eq s 3
+ostr s3
+end
+if eq s 4
+ostr s4
+end
+if eq s 5
+ostr s5
+end
+if eq s 6
+ostr s6
+end
+if eq s 7
+ostr s7
+end
+end
+
+fn ostline i ulong to void
+oname i
+ostr f1
+ostate get sst i
+ostr f2
+onum get spid i
+ostr f3
+onum long get srn i
+ostr f4
+x = get sex i
+if lt x 0
+ostr fnone
+else
+if ne and x 127 0
+ostr fsig
+onum and x 127
+else
+ostr fexit
+onum shr x 8
+end
+end
+ostr f5
+if gt get sbr i 0
+otime get sbr i
+else
+ostr fnone
+end
+s = get sst i
+if or eq s 2 eq s 6
+ostr f6
+d = div sub get snx i now NS
+if lt d 0
+d = 0
+end
+onum d
+end
+ostr f7
+onum long get sro i
+ostr tnl
+end
+
+fn wrstate i ulong to void
+bset 0
+pstr dst
+pb 47
+pname i
+pstr xtmp
+fd = popen OTRU 384
+if lt fd 0
+ret
+end
+put gu GOB 0
+ostline i
+w = write int fd ob 0 get gu GOB
+put gu GOB 0
+c = fclose int fd
+pkreset
+bset 0
+pstr dst
+pb 47
+pname i
+pstr xtmp
+pkpth
+bset 0
+pstr dst
+pb 47
+pname i
+pkpth
+r = renames pk 0 get gu GPK 0
+end
+
+fn wrstates to void
+for i ulong get sv VN
+wrstate i
+end
+end
+
+note ------------------------------------------------------------------- control
+
+fn verbis k ulong n ulong t view uchar * to bool
+m = get dnl k
+if ne sub m add n 1 len t
+ret false
+end
+o = add n 1
+for j ulong len t
+if ne dnch k add o j get t j
+ret false
+end
+end
+ret true
+end
+
+fn ctlone k ulong to void
+m = get dnl k
+d = ulong 0
+for j ulong m
+if eq dnch k j 46
+d = j
+end
+end
+if eq d 0
+ret
+end
+for j ulong d
+put av j dnch k j
+end
+if and aveq d vall verbis k d vexit
+put sv VEXIT 1
+for i ulong get sv VN
+put sdn i 1
+stopsvc i
+end
+ret
+end
+f = findsvc d
+if lt f 0
+ret
+end
+i = ulong f
+if verbis k d vstart
+put sdn i 0
+if le get spid i 0
+put sbk i 0
+put snx i now
+setst i 2
+end
+end
+if verbis k d vstop
+put sdn i 1
+stopsvc i
+end
+if verbis k d vrestart
+put sbk i 0
+if gt get spid i 0
+put srq i 1
+stopsvc i
+else
+put sdn i 0
+put snx i now
+setst i 2
+end
+end
+end
+
+fn ctlpath k ulong to void
+bset 0
+pstr dctl
+pb 47
+dname k
+end
+
+fn ctlscan to void
+bset 0
+pstr dctl
+r = lsdir
+if le r 0
+ret
+end
+c = get gu GDC
+for k ulong c
+ctlpath k
+u = unlink pth 0 plen
+end
+for k ulong c
+ctlone k
+end
+end
+
+note ---------------------------------------------------------------------- daemon
+
+fn pidpath to void
+bset 0
+pstr fpid
+end
+
+note pid of a live daemon from daemon.pid (pid and start time must both match), else 0.
+fn daemonpid to long
+pidpath
+fd = popen ORDO 0
+if lt fd 0
+ret 0
+end
+r = read int fd ebuf 0 64
+c = fclose int fd
+if le r 0
+ret 0
+end
+p = long 0
+t = long 0
+f = ulong 0
+for j ulong ulong r
+ch = get ebuf j
+if eq ch 32
+f = add f 1
+else
+if and ge ch 48 le ch 57
+if eq f 0
+p = add mul p 10 long sub ch 48
+else
+t = add mul t 10 long sub ch 48
+end
+end
+end
+end
+if le p 0
+ret 0
+end
+if ne killpid int p 0 0
+ret 0
+end
+if ne pstime p t
+ret 0
+end
+ret p
+end
+
+fn wrpid to void
+pidpath
+fd = popen OTRU 420
+if lt fd 0
+ret
+end
+put gu GOB 0
+me = getpid
+onum me
+ob1 32
+onum pstime me
+ostr tnl
+w = write int fd ob 0 get gu GOB
+put gu GOB 0
+c = fclose int fd
+end
+
+fn anyrun to bool
+for i ulong get sv VN
+if gt get spid i 0
+ret true
+end
+end
+ret false
+end
+
+fn daemon to int
+p = daemonpid
+if gt p 0
+ostr mdaemon
+ostr mrunning
+onum p
+ostr tnl
+oflush 2
+ret 3
+end
+mkdirs
+wrpid
+put sv VN 0
+put sv VEXIT 0
+rescan
+put sv VSCAN 0
+for outer ulong 1000000
+for inner ulong 1000000
+ctlscan
+for i ulong get sv VN
+tick1 i
+end
+if and eq get sv VEXIT 1 not anyrun
+wrstates
+pidpath
+u = unlink pth 0 plen
+ret 0
+end
+c = add get sv VSCAN 1
+put sv VSCAN c
+if eq rem c 50 0
+rescan
+put sv VBEAT 1
+end
+if eq get sv VBEAT 1
+put sv VBEAT 0
+wrstates
+end
+s = sleepns 200000000
+end
+end
+ret 0
+end
+
+note ---------------------------------------------------------------------- client
+
+fn ctlwrite n ulong v view uchar * to bool
+bset 0
+pstr dctl
+pb 47
+pav n
+pstr dot
+pstr v
+fd = popen 524353 384
+if lt fd 0
+ret false
+end
+c = fclose int fd
+for t ulong 100
+r = faccess pth 0 plen 0
+if lt r 0
+ret true
+end
+s = sleepns 200000000
+end
+ret false
+end
+
+fn showone n ulong to int
+bset 0
+pstr dst
+pb 47
+pav n
+fd = popen ORDO 0
+if lt fd 0
+ostr mnoname
+oav n
+ostr tnl
+oflush 2
+ret 1
+end
+r = read int fd ebuf 0 len ebuf
+c = fclose int fd
+if gt r 0
+w = write 1 ebuf 0 ulong r
+end
+ret 0
+end
+
+fn status to int
+p = daemonpid
+if gt p 0
+ostr mup
+onum p
+else
+ostr mdown
+end
+ostr tnl
+oflush 1
+if eq argcnt 3
+n = arg 2
+ret showone n
+end
+bset 0
+pstr dst
+r = lsdir
+if lt r 0
+ret 0
+end
+c = get gu GDC
+for k ulong c
+if not or dnends k xtmp dnends k flast
+bset 0
+pstr dst
+pb 47
+dname k
+fd = popen ORDO 0
+if ge fd 0
+r2 = read int fd ebuf 0 len ebuf
+x = fclose int fd
+if gt r2 0
+w = write 1 ebuf 0 ulong r2
+end
+end
+end
+end
+ret 0
+end
+
+fn request v view uchar * to int
+if ne argcnt 3
+ostr musage
+ostr tnl
+oflush 2
+ret 2
+end
+n = arg 2
+if not ctlwrite n v
+ostr mdaemon
+ostr mnoack
+ostr tnl
+oflush 2
+ret 1
+end
+s = sleepns 400000000
+n = arg 2
+ret showone n
+end
+
+note ensure: start the daemon (run) in the background unless one is alive. The child gets
+note HOME and the AIEN_SUPERVISE_* overrides through /usr/bin/env -i, stdout/stderr to
+note state/daemon.log.
+fn ensure to int
+if gt daemonpid 0
+ret 0
+end
+mkdirs
+pkreset
+pkstr tenv
+pkstr tdi
+c = ulong envcnt
+for j ulong c
+r = envread j av 0 len av
+if gt r 0
+if keepenv ulong r
+pkav ulong r
+end
+end
+end
+r = readlnk tselfx 0 len tselfx self 0 len self
+if le r 0
+ret 1
+end
+pkbeg
+for j ulong ulong r
+pkc get self j
+end
+pkend
+pkstr vrun
+pid = fork
+if lt pid 0
+ret 1
+end
+if eq pid 0
+s = setsid
+nf = nullfd
+if ge nf 0
+d = dupfd int nf 0 0
+end
+bset 0
+pstr flog
+lf = popen OAPP 384
+if ge lf 0
+d = dupfd int lf 1 0
+d = dupfd int lf 2 0
+end
+x = execprog pk 0 get gu GPK
+exit 127
+end
+ret 0
+end
+
+note HOME=... and AIEN_SUPERVISE_*=... entries survive into the daemon.
+fn keepenv n ulong to bool
+if and gt n 5 avpre n thome
+ret true
+end
+if lt n 15
+ret false
+end
+for j ulong 15
+if ne get av j get estate j
+ret false
+end
+end
+ret true
+end
+
+note check [NAME]: validate service files as the daemon reads them (the sandbox half is checked
+note by `sudo aien-supervise-root check NAME`).
+fn check to int
+put sv VN 0
+scandir 1
+scandir 0
+bad = ulong 0
+for i ulong get sv VN
+if eq get sst i 7
+bad = add bad 1
+ostr mfail
+else
+ostr mok
+end
+oname i
+ostr tnl
+end
+oflush 1
+if gt bad 0
+ret 1
+end
+ret 0
+end
+
+fn main to int
+if not bases
+ostr musage
+ostr tnl
+oflush 2
+ret 2
+end
+if lt argcnt 2
+ostr musage
+ostr tnl
+oflush 2
+ret 2
+end
+n = arg 1
+if aveq n vrun
+ret daemon
+end
+if aveq n vensure
+ret ensure
+end
+if aveq n vstatus
+ret status
+end
+if aveq n vstart
+ret request vstart
+end
+if aveq n vstop
+ret request vstop
+end
+if aveq n vrestart
+ret request vrestart
+end
+if aveq n vcheck
+ret check
+end
+if aveq n vshut
+put av 0 97
+put av 1 108
+put av 2 108
+if ctlwrite 3 vexit
+ret 0
+end
+ret 1
+end
+ostr musage
+ostr tnl
+oflush 2
+ret 2
+end

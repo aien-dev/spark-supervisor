@@ -1,5 +1,4 @@
 /target
-Cargo.lock
 *.log
 *.db
 *.db-shm

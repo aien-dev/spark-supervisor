@@ -1,33 +1,62 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+## Reporting a vulnerability
 
-The following versions of `spark-hive` are currently supported with security updates:
+Report privately. Do not open a public issue, pull request or discussion about it.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+1. GitHub: open this repository's Security tab and choose "Report a vulnerability". This
+   creates a private advisory that only the maintainers can see. If that option is not shown,
+   private vulnerability reporting has not been enabled for this repository yet; use email.
+2. Email: drake@aienos.com with the subject `[spark-supervisor] security report`.
 
-## Reporting a Vulnerability
+Include the commit or release you tested, the component (path), steps to reproduce, and what an
+attacker gains. If the report involves a secret, say where it was exposed and do not send the
+secret itself. Encrypted mail is not required; do not post proof-of-concept payloads publicly.
 
-We take the security of `spark-hive` and sovereign agent infrastructure seriously. If you discover a vulnerability, please report it responsibly rather than opening a public issue.
+## Response targets
 
-### Reporting Channels
-- **Email**: `aien@aienos.com`
-- **GPG Key**: Available upon request or via public keyservers.
+This project has one maintainer; the targets below are best effort and stated honestly.
 
-### What to Include in Your Report
-1. Detailed description of the vulnerability and attack vector.
-2. Minimal reproduction steps or proof-of-concept.
-3. Affected modules or dependencies.
-4. Suggested mitigation or patch if available.
+- Acknowledgement: within 3 working days.
+- Triage and severity: within 7 days of acknowledgement.
+- Fix or mitigation for confirmed issues: aim for 30 days for high and critical, 90 days
+  otherwise, with a status update at least every 14 days until closed.
+- Disclosure: coordinated. An advisory is published with credit (unless you ask otherwise)
+  once the fix is on the default branch. Default embargo 90 days, negotiable.
 
-### Response Timeline
-- **Initial Response**: Within 24 hours.
-- **Triage Assessment**: Within 48 hours.
-- **Patch Release**: Coordinated disclosure within 14 days or earlier depending on severity.
+## Scope
 
-### Sovereign Security Invariants
-- Zero plaintext API tokens or keys on disk. All integrations must use hardware TPM vault or secure loopback credential injection.
-- Loopback isolation: Daemons and internal IPC default strictly to `127.0.0.1`.
-- Safe deserialization: Untrusted inputs are strictly schema-validated before processing.
+This repository is archived. README: it is no longer authoritative, and the canonical home is
+`crates/spark-supervisor` in aien-dev/aien-sovereign-core. History is kept read-only. Report issues
+that also affect the canonical crate there; reports against this archived code are still accepted.
+
+`spark-supervisor` is a Rust daemon that starts the services named in a TOML file, restarts them
+by policy, polls their health URLs, and reads `/proc/<pid>` for memory and CPU figures.
+
+In scope:
+
+- Command or argument injection through `supervisor.toml`, or a config path that makes the
+  supervisor run something other than the configured command.
+- Unsafe handling of the `env` table passed to children.
+- Parsing faults in `/proc` telemetry (`src/proc_telemetry.rs`).
+- The tracked GitHub workflows at this revision, including `sovereign-reviewer.yml`, which runs on
+  `pull_request_target`, `issues` and `issue_comment` with `pull-requests: write` and
+  `issues: write`.
+
+Rules stated by the previous policy, kept here as the repository's intent:
+
+- Zero plaintext API tokens or keys on disk.
+- Daemons and internal IPC default to `127.0.0.1`. The supervisor itself opens no listening
+  socket; the default health URLs it writes are on `127.0.0.1`.
+- Untrusted inputs are schema-validated before processing (the config is parsed by `serde` and
+  `toml` into fixed structs).
+
+Out of scope: the supervised services themselves, the host operating system.
+
+## Supported versions
+
+None. The repository is archived; Cargo version `0.1.0` was the only line. Reports against older commits are welcome but fixes land on the default branch only.
+
+## Status
+
+Archived. No release, no certification, no bug bounty. See AUDIT_SCOPE.md for what to review and how to build and test it.

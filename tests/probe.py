@@ -71,7 +71,7 @@ for ns, directive in (("ipc", "PrivateIPC"), ("uts", "ProtectHostname.utsns"), (
 # Filesystem: ProtectSystem=strict, ProtectHome=, PrivateTmp=, PrivateDevices=, ProtectKernel*
 report("ProtectSystem.usr", readonly_mount("/usr"))
 report("ProtectSystem.etc", readonly_mount("/etc"))
-report("ProtectHome", not os.path.exists("/home/drakestapleton") and not os.path.exists("/home"))
+report("ProtectHome", not os.path.exists("/home") and not os.path.exists("/root"))
 report("PrivateTmp", not os.path.exists("/tmp/aien-sup-hostmarker"))
 report("PrivateDevices", not any(os.path.exists(p) for p in ("/dev/nvme0n1", "/dev/sda", "/dev/mem", "/dev/nvidia0", "/dev/tpmrm0")) and os.path.exists("/dev/null"))
 report("ProtectKernelTunables.sys", not os.path.exists("/sys/kernel"))

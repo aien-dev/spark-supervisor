@@ -116,7 +116,7 @@ cp /usr/bin/true /tmp/sup-true; chmod 0755 /tmp/sup-true
 base | sed 's|^exec .*|exec /tmp/sup-true|' | put sup-r6; refuse "exec under world-writable /tmp" sup-r6
 base | sed 's|^exec /usr/bin/python3.12|exec /usr/bin/python3|' | put sup-r7; refuse "exec through a symlink" sup-r7
 base | sed '$a rw /etc/aien-supervise' | put sup-r8; refuse "rw outside /var /srv /run" sup-r8
-base | sed '$a ro /home/drakestapleton' | put sup-r9; refuse "ro under /home" sup-r9
+base | sed '$a ro /home/operator' | put sup-r9; refuse "ro under /home" sup-r9
 base | sed '$a bogus-key 1' | put sup-r10; refuse "unknown key" sup-r10
 base | sed '/^syscalls/d' | put sup-r11; refuse "no syscalls line" sup-r11
 base | sed '$a env LD_PRELOAD=/tmp/x.so' | put sup-r12; refuse "LD_ environment" sup-r12

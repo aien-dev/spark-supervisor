@@ -15,7 +15,7 @@ snapd, dgx-dashboard, nut, ...) are not AIEN services and are out of scope.
 
 | Service | Role | Risk | Order | Status, reason |
 | --- | --- | --- | --- | --- |
-| allen-chat (.service) | public Allen gateway, tailnet 18110 + console 18112 | high: public input | 1 | READY: `services/allen-chat.svc`; AllenChat reruns its probes, then cuts over |
+| allen-chat (.service) | public Allen gateway, tailnet 18110 + console 18112 | high: public input | 1 | READY: `services/allen-chat.svc.example` (real addresses kept local); AllenChat reran its gateway probe and the nested compile-sandbox tests (17/17) under aien-supervise; cutover waits until AllenRelay finishes changing the unit and the file is synced to the final unit |
 | allen-catalog (.service + .timer) | daily public GitHub read for Allen | low | 1 | READY: `services/allen-catalog.svc` (real run inside the sandbox wrote catalog.txt) |
 | allen-contacts-ingest (.service + .path) | moves contact drops to the private store (.om binary) | medium: private data | 1 | READY: `services/allen-contacts-ingest.svc` (aien-watch trigger) |
 | omega-projects-pusher (.service + .path) | files Allen items on aien-dev/omega-projects | medium: token | 1 | READY: `services/omega-projects-pusher.svc`; token not provisioned on this host (queues only); TPM-sealed credential delivery needs Drake's decision (see table 2) |
@@ -112,7 +112,7 @@ filter result itself is shown. Allen's own probes were rerun in each service's e
 | SystemCallArchitectures=native (all) | F non-AArch64 audit arch -> kill | (no 32-bit userland to test) | not run |
 | KeyringMode=private (contacts) | keyctl allowed by @system-service as in systemd; session keyring is the service user's own (dedicated uid) | not probed | not run |
 | RemoveIPC=yes (pusher) | ipc namespace is discarded with the sandbox | PrivateIPC | U |
-| IPAddressDeny=any, IPAddressAllow= (chat) | N skuid allowlist + `net-default drop`; input: `listen` port source sets | IPAddressDeny.outbound; gw "1.1.1.1 / github / LAN timed out", "100.64.0.3:443 connected", "127.0.0.1:18091 connected" | U, M |
+| IPAddressDeny=any, IPAddressAllow= (chat) | N skuid allowlist + `net-default drop`; input: `listen` port source sets | IPAddressDeny.outbound; gw "1.1.1.1 / github / LAN timed out", "hub tailnet address :443 connected", "127.0.0.1:18091 connected" | U, M |
 | IPAddressAllow/Deny ranges (catalog) | N `allow 127.0.0.53`, `deny` local ranges, `net-default accept` | real catalog run reached GitHub; pusher probe "api.github.com:443 ok" | U |
 | MemoryMax= (chat 1G, contacts 128M, pusher 256M) | C memory.max | MemoryMax (64 MiB cap, 128 MiB child OOM-killed) | M |
 | TasksMax= (chat 128, contacts 8, pusher 16) | C pids.max | TasksMax | M |
@@ -134,7 +134,7 @@ KeyringMode=private are implemented but were not probed.
 
 * allen-chat, `/tmp/allenchat/gw/probe.py`: same verdicts as the systemd unit's design (home,
   gh, gb10 lock, contact store, spool-status write, sudo, GitHub/1.1.1.1/LAN DENIED; spool-in and
-  contacts-drop create, 127.0.0.1:18091, 100.64.0.3:443, AF_NETLINK ALLOWED; 2 visible pids).
+  contacts-drop create, 127.0.0.1:18091, the hub's tailnet address :443, AF_NETLINK ALLOWED; 2 visible pids).
 * allen-chat, `/tmp/allenchat/gw/test_sandbox.py /usr/bin/busybox` (nested compile sandbox):
   17/17 passed.
 * omega-projects-pusher, `/tmp/allenchat/pusher/sandbox_probe.py`: home, /root, contacts,

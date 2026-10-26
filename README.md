@@ -104,7 +104,7 @@ run, as whom, or with which rights: that needs root to edit `/etc/aien-supervise
 
 ```
 Defaults!/usr/local/libexec/aien-supervise/aien-supervise-root !use_pty
-drakestapleton ALL=(root) NOPASSWD: /usr/local/libexec/aien-supervise/aien-supervise-root run *, /usr/local/libexec/aien-supervise/aien-supervise-root stop *, /usr/local/libexec/aien-supervise/aien-supervise-root kill *, /usr/local/libexec/aien-supervise/aien-supervise-root check *
+<operator> ALL=(root) NOPASSWD: /usr/local/libexec/aien-supervise/aien-supervise-root run *, /usr/local/libexec/aien-supervise/aien-supervise-root stop *, /usr/local/libexec/aien-supervise/aien-supervise-root kill *, /usr/local/libexec/aien-supervise/aien-supervise-root check *
 ```
 
 `!use_pty` keeps the service's output on the daemon's pipe instead of a sudo pty. The helper

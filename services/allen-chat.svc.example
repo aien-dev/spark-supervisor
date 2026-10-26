@@ -1,0 +1,42 @@
+# allen-chat: public gateway for www.aienos.com/allen/ (tailnet only, no credentials).
+# EXAMPLE: the real file carries the host's tailnet addresses and is kept out of this public
+# repository. Replace the documentation addresses (RFC 5737) before installing root-owned 0644 as
+# /etc/aien-supervise/services/allen-chat.svc:
+#   192.0.2.2  this host's tailnet address      192.0.2.3  the reverse proxy (hub)
+#   192.0.2.1, 192.0.2.4  the operator's devices (console listener only)
+# Directive-by-directive mapping and probes: docs/MIGRATION.md.
+exec /usr/bin/python3.12 -I /opt/allen-chat/allen_chat.py --listen 192.0.2.2:18110 --trusted-proxy 192.0.2.3 --upstream 127.0.0.1:18091 --system-prompt /opt/allen-chat/system-prompt.txt --catalog /var/lib/allen-catalog/catalog.txt --areas-file /var/lib/allen-catalog/areas.txt --omc /opt/allen-chat/omc --irwasm /opt/allen-chat/irwasm --spool-in /var/lib/allen-chat/spool-in --spool-status /var/lib/allen-chat/spool-status --contacts-drop /var/lib/allen-chat/contacts-drop --memory-url http://127.0.0.1:18096 --relay-drop /var/lib/allen-chat/relay-drop --console-listen 192.0.2.2:18112 --console-state /var/lib/allen-chat/console
+restart on-failure
+backoff 5 300
+user allen-chat
+groups allen-spool allen-drop allen-relaydrop
+envfile /etc/allen-chat/env
+env PATH=/usr/bin:/bin
+umask 0027
+nice 5
+ro /opt/allen-chat
+ro /var/lib/allen-catalog
+ro /var/lib/allen-chat/spool-status
+rw /var/lib/allen-chat/spool-in
+rw /var/lib/allen-chat/contacts-drop
+rw /var/lib/allen-chat/relay-drop
+rw /var/lib/allen-chat/console
+net filter
+allow 127.0.0.1
+allow 192.0.2.1
+allow 192.0.2.2
+allow 192.0.2.3
+allow 192.0.2.4
+net-default drop
+listen 18110 192.0.2.3 192.0.2.2 127.0.0.1
+listen 18112 192.0.2.1 192.0.2.4 192.0.2.2 127.0.0.1
+memory-max 1073741824
+tasks-max 128
+cpu-quota 200
+nofile 1024
+# The gateway runs bwrap itself for its compile sandbox: user namespaces stay creatable and the
+# filter adds @mount, unshare and setns (as SystemCallFilter=@system-service @mount unshare setns).
+namespaces yes
+syscalls @system-service @mount @ns
+families unix inet inet6 netlink
+mdwe yes

@@ -39,9 +39,9 @@ In scope:
   supervisor run something other than the configured command.
 - Unsafe handling of the `env` table passed to children.
 - Parsing faults in `/proc` telemetry (`src/proc_telemetry.rs`).
-- The tracked GitHub workflows at this revision, including `sovereign-reviewer.yml`, which runs on
-  `pull_request_target`, `issues` and `issue_comment` with `pull-requests: write` and
-  `issues: write`.
+- The tracked GitHub workflows at this revision, including `doctrine-audit.yml`, which runs on
+  `push` and `pull_request` with `contents: read` and builds `spark-inquisitor` from a pinned
+  commit.
 
 Rules stated by the previous policy, kept here as the repository's intent:
 

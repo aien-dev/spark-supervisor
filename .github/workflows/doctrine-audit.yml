@@ -1,0 +1,99 @@
+# Doctrine diff audit: zero telemetry, voice and binary checks from spark-inquisitor.
+# Replaces the pr-reviewer job of the retired sovereign-reviewer.yml with the same
+# `spark-inquisitor review` audit, but without pull_request_target, without write
+# permissions and without posting comments: a violation fails this check and the
+# findings go to the job log and step summary.
+name: Doctrine Audit
+
+"on":
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Pinned audit sources. Bump both together, by commit sha only.
+  INQUISITOR_REPO: aien-dev/aien-sovereign-core-mv
+  INQUISITOR_SHA: b65e00b0652a3b426dce1bf77f7fe4eccf5f7473
+  PROTOCOLS_REPO: aien-dev/aien-protocols-mv
+  PROTOCOLS_SHA: e705fdc9c97394f17f32f1dcbcbf038ca556250b
+
+jobs:
+  doctrine-audit:
+    name: doctrine-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository under audit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          path: target-repo
+
+      - name: Checkout pinned inquisitor source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ env.INQUISITOR_REPO }}
+          ref: ${{ env.INQUISITOR_SHA }}
+          persist-credentials: false
+          path: sovereign-core
+
+      - name: Checkout pinned protocols dependency
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ env.PROTOCOLS_REPO }}
+          ref: ${{ env.PROTOCOLS_SHA }}
+          persist-credentials: false
+          path: aien-protocols
+
+      - name: Build spark-inquisitor
+        run: cargo build --release --manifest-path sovereign-core/Cargo.toml -p spark-inquisitor
+
+      - name: Compute diff under audit
+        working-directory: target-repo
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          head=$(git rev-parse HEAD)
+          if [ "$EVENT" = "pull_request" ]; then
+            base=$(git merge-base "$PR_BASE" "$PR_HEAD")
+            head=$PR_HEAD
+          elif [ "$REF_NAME" != "$DEFAULT_BRANCH" ]; then
+            base=$(git merge-base "origin/$DEFAULT_BRANCH" "$head")
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            base=$PUSH_BEFORE
+          else
+            base=$(git rev-parse "$head^")
+          fi
+          echo "audit range: $base..$head"
+          git diff "$base" "$head" > "$RUNNER_TEMP/audit.diff"
+          wc -l "$RUNNER_TEMP/audit.diff"
+
+      - name: Doctrine audit (fails on any finding)
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login || github.actor }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
+          TITLE: ${{ github.event.pull_request.title || github.ref_name }}
+        run: |
+          set +e
+          ./sovereign-core/target/release/spark-inquisitor review \
+            --author "$AUTHOR" \
+            --pr "$PR_NUMBER" \
+            --title "$TITLE" \
+            --diff "$RUNNER_TEMP/audit.diff" \
+            --output "$RUNNER_TEMP/audit.md" \
+            --output-labels "$RUNNER_TEMP/audit-labels.txt"
+          rc=$?
+          set -e
+          if [ -f "$RUNNER_TEMP/audit.md" ]; then
+            cat "$RUNNER_TEMP/audit.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "spark-inquisitor review rc=$rc"
+          exit "$rc"

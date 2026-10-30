@@ -1,0 +1,22 @@
+# cortex-visitors: isolated Cortex for public Allen visitor memory (loopback 18096 only, no outbound).
+# Replaces the interim spark-supervisor entry (~/.config/aien/supervisor-interim.toml).
+exec /opt/cortex-visitors/run
+restart always
+backoff 2 60
+user cortex-visitors
+env HOME=/var/lib/cortex-visitors
+env PATH=/usr/bin:/bin
+env RUST_LOG=warn
+umask 0027
+ro /opt/cortex-visitors
+rw /var/lib/cortex-visitors
+net filter
+net-default drop
+listen 18096 127.0.0.1
+memory-max 536870912
+tasks-max 64
+namespaces no
+syscalls @system-service
+syscall-error eperm
+families unix inet inet6
+mdwe yes

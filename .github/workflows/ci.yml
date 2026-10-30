@@ -12,22 +12,24 @@ permissions:
 
 jobs:
   test:
-    name: Test & Invariant Verification
-    runs-on: ubuntu-latest
+    name: Build (seeded omc) and unprivileged tests
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout omega-mv at the pinned compiler
+        uses: actions/checkout@v4
         with:
-          components: rustfmt, clippy
+          repository: aien-dev/omega-mv
+          ref: 0d6af54f995ffda3a4a07e06da8cd5e343f647f9
+          path: omega-mv
 
-      - name: Verify Code Formatting
-        run: cargo fmt --all -- --check
+      - name: Build
+        run: OMC=omega-mv/seed/out/omc sh tools/build.sh
 
-      - name: Cargo Check
-        run: cargo check --all-targets
+      - name: Syscall table matches systemd-analyze and kernel headers
+        run: sh tools/gen-syscalls.sh --check
 
-      - name: Run Tests
-        run: cargo test --verbose
+      - name: Unprivileged supervisor tests
+        run: sh tests/user.sh

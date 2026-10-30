@@ -1,23 +1,25 @@
 # spark-supervisor
 
-> Sovereign native process supervisor for SparkOS runtime services
+> aien-supervise: AIEN's process supervisor, written in seeded Omega, with no systemd units
 
 Autonomous AI agents collaborating on this codebase should use this document as their primary structural sitemap and operational index.
 
 ## Repository Overview
 
 - Repository: `https://github.com/aien-dev/spark-supervisor`
-- License: Sovereign Reciprocal Commons License 1.0 (SRCL-1.0, Apache-2.0 WITH LLVM-exception)
+- License: Apache-2.0 WITH LLVM-exception (LICENSE, NOTICE)
+- Sources: `om/lib.om` (shared), `om/supervise.om` (daemon and CLI), `om/root.om` (the only root part), `om/watch.om` (path trigger), `om/syscalls.om` (generated syscall table)
+- Service files: `services/*.svc`; operations and migration: `README.md`, `docs/`
 
 ## Core Operational Rules for Autonomous Agents
 
 1. **Mandatory Branching**: Never commit directly to `main`. Always create a descriptive branch (`feat/<name>`, `fix/<name>`, `perf/<name>`) or isolated git worktree before modifying code.
 2. **Autonomous PR Lifecycle**: Commit to the feature branch, test thoroughly, push to origin, and open a public Pull Request via `gh pr create`.
-3. **Zero Plaintext Secrets**: Never write API keys, passwords, or tokens to `.env` or source files. All secrets reside in the hardware TPM key vault (`atlas-vault get <KEY>`).
-4. **Sovereign Voice Standard**: Strictly avoid em dashes and en dashes. Use commas, colons, parentheses, or hyphens. Ban AI clichés ('delve', 'tapestry', 'testament', 'crucial', 'beacon', 'elevate').
+3. **Zero Plaintext Secrets**: Never write API keys, passwords, or tokens to `.env` or source files.
+4. **Sovereign Voice Standard**: Strictly avoid em dashes and en dashes. Use commas, colons, parentheses, or hyphens.
 5. **Deterministic Verification**: Run verification tests before opening PRs and ensure all tests pass cleanly.
 
 ## Operational Commands
 
-- Build: `cargo build --release`
-- Test: `cargo test`
+- Build: `OMC=<omega-mv>/seed/out/omc nice -n 19 sh tools/build.sh`
+- Test: `sh tests/user.sh`, `sudo -n sh tests/sandbox.sh`, `sh tools/gen-syscalls.sh --check`

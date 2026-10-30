@@ -1,0 +1,284 @@
+note aien-watch DIR SUFFIX PERIOD TIMEOUT PROG [ARGS...]: path trigger for aien-supervise (replaces
+note systemd .path units). Runs inside the service's sandbox as the service user. Every PERIOD
+note seconds it lists DIR; when DIR holds a non-hidden entry ending in SUFFIX ("*" = any name) it
+note runs PROG once with this process's environment (through /usr/bin/env -i, since exec in Omega
+note passes none) and waits for it; TIMEOUT seconds (0 = none) later a run still going gets
+note SIGTERM, 5 s after that SIGKILL (TimeoutStartSec). It runs again when the set of matching
+note names changes, after a failure (backoff PERIOD*2^k up to 300 s), and at least hourly while
+note matches remain. An unreadable DIR ends it with status 1, so the supervisor restarts it.
+text tenv "/usr/bin/env"
+text tdi "-i"
+text tstar "*"
+text wpre "aien-watch: "
+text wusage "usage: aien-watch DIR SUFFIX PERIOD TIMEOUT PROG [ARGS...]"
+text wbadp "bad PERIOD or TIMEOUT"
+text wlist "cannot list "
+text wrun "ran for "
+text wmat " matching entries, status "
+text wtoo "arguments and environment do not fit one exec packet"
+text wtmo "run timed out, sending SIGTERM\n"
+global sfx uchar 256
+global wv ulong 16
+global st4 uchar 4
+const WSFX ulong 0
+const WSIG ulong 1
+const WRC ulong 2
+const WLAST ulong 3
+const WFAIL ulong 4
+const WPER ulong 5
+const WTMO ulong 6
+
+fn wmsg t view uchar * to void
+ostr wpre
+ostr t
+end
+
+fn match k ulong to bool
+if eq dnch k 0 46
+ret false
+end
+n = get wv WSFX
+if and eq n 1 eq get sfx 0 42
+ret true
+end
+m = get dnl k
+if lt m n
+ret false
+end
+o = sub add get dno k m n
+for i ulong n
+if ne get dnb add o i get sfx i
+ret false
+end
+end
+ret true
+end
+
+note Order-independent signature of the matching names: count in the high bits plus the sum
+note of each name's FNV-1a hash.
+fn nhash k ulong to ulong
+h = ulong 14695981039346656037
+for i ulong get dnl k
+h = xor h ulong dnch k i
+h = mul h 1099511628211
+end
+ret h
+end
+
+fn signat to ulong
+s = ulong 0
+c = ulong 0
+for k ulong get gu GDC
+if match k
+s = add s nhash k
+c = add c 1
+end
+end
+put gu GSV c
+ret add s shl c 48
+end
+
+fn dirpth to void
+pset
+n = arg 1
+pav n
+end
+
+note Packet: /usr/bin/env -i <each environment entry> PROG ARGS... (false when it does not fit).
+fn buildpk to bool
+pkreset
+pkstr tenv
+pkstr tdi
+c = ulong envcnt
+for j ulong c
+r = envread j av 0 len av
+if lt r 0
+ret false
+end
+if not pkroom ulong r
+ret false
+end
+pkav ulong r
+end
+a = ulong argcnt
+for i ulong sub a 5
+n = arg add i 5
+if not pkroom n
+ret false
+end
+pkav n
+end
+ret true
+end
+
+fn decode to long
+v = or ulong get st4 0 shl ulong get st4 1 8
+if ne and v 127 0
+ret long add 128 and v 127
+end
+ret long shr v 8
+end
+
+fn runone to long
+pid = fork
+if lt pid 0
+ret -1
+end
+if eq pid 0
+r = execprog pk 0 get gu GPK
+exit 127
+end
+t0 = monons
+tmo = mul long get wv WTMO 1000000000
+sent = ulong 0
+for outer ulong 1000000
+for inner ulong 1000000
+r = waitpid int pid st4 0 4 1
+if eq r pid
+ret decode
+end
+if lt r 0
+ret -1
+end
+el = sub monons t0
+if and gt tmo 0 and eq sent 0 ge el tmo
+wmsg wtmo
+oflush 2
+k = killpid int pid 15
+sent = 1
+end
+if and eq sent 1 ge el add tmo 5000000000
+k = killpid int pid 9
+sent = 2
+end
+s = sleepns 100000000
+end
+end
+ret -1
+end
+
+fn report c ulong rc long to void
+wmsg wrun
+onum long c
+ostr wmat
+onum rc
+ostr tnl
+oflush 2
+end
+
+fn pause1 to void
+p = get wv WPER
+f = get wv WFAIL
+if gt f 0
+s = shl p f
+if gt s 300
+s = 300
+end
+p = s
+end
+r = sleepns mul long p 1000000000
+end
+
+fn numarg i ulong lo long hi long to long
+n = arg i
+if eq n 0
+ret -1
+end
+p = long 0
+for j ulong n
+c = get av j
+if or or lt c 48 gt c 57 gt p 100000000
+ret -1
+end
+p = add mul p 10 long sub c 48
+end
+if or lt p lo gt p hi
+ret -1
+end
+ret p
+end
+
+fn main to int
+if lt argcnt 6
+wmsg wusage
+ostr tnl
+oflush 2
+ret 2
+end
+n = arg 2
+if or eq n 0 gt n 256
+wmsg wusage
+ostr tnl
+oflush 2
+ret 2
+end
+for i ulong n
+put sfx i get av i
+end
+put wv WSFX n
+p = numarg 3 1 86400
+t = numarg 4 0 86400
+if or lt p 0 lt t 0
+wmsg wbadp
+ostr tnl
+oflush 2
+ret 2
+end
+put wv WPER ulong p
+put wv WTMO ulong t
+if not buildpk
+wmsg wtoo
+ostr tnl
+oflush 2
+ret 2
+end
+put wv WSIG 0
+put wv WRC 0
+put wv WLAST 0
+put wv WFAIL 0
+for outer ulong 1000000
+for inner ulong 1000000
+r = wstep
+if ne r 0
+ret int r
+end
+end
+end
+ret 0
+end
+
+fn wstep to long
+dirpth
+r = lsdir
+if lt r 0
+wmsg wlist
+dirpth
+opth
+ostr tnl
+oflush 2
+ret 1
+end
+s = signat
+c = get gu GSV
+now = ulong div monons 1000000000
+due = or ne s get wv WSIG ne get wv WRC 0
+if ge sub now get wv WLAST 3600
+due = true
+end
+if and gt c 0 due
+rc = runone
+report c rc
+put wv WSIG s
+put wv WRC ulong rc
+put wv WLAST now
+if eq rc 0
+put wv WFAIL 0
+else
+if lt get wv WFAIL 9
+put wv WFAIL add get wv WFAIL 1
+end
+end
+end
+pause1
+ret 0
+end

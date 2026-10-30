@@ -1,0 +1,21 @@
+# allen-contacts-ingest: move Allen contact drops into the private store (seeded-Omega binary).
+# Replaces allen-contacts-ingest.service + .path (DirectoryNotEmpty=, hidden entries ignored):
+# aien-watch runs it inside the sandbox when the drop directory holds a non-hidden entry.
+exec /opt/allen-contacts/allen-contacts-ingest ingest
+watch /var/lib/allen-chat/contacts-drop * 2 60
+restart always
+user allen-contacts
+umask 0077
+nice 19
+ro /opt/allen-contacts
+rw /var/lib/allen-chat/contacts-drop
+rw /var/lib/allen-contacts
+net none
+memory-max 134217728
+tasks-max 8
+namespaces no
+syscalls @system-service
+syscalls-deny @privileged @resources
+syscall-error eperm
+families unix
+mdwe yes

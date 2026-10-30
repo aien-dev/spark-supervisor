@@ -15,15 +15,16 @@ All contributions must adhere to our engineering invariants:
 ### Building & Testing
 ```bash
 # Clone the repository
-git clone https://github.com/aien-dev/spark-hive.git
-cd spark-hive
+git clone https://github.com/aien-dev/spark-supervisor.git
+cd spark-supervisor
 
-# Run test suite
-cargo test --verbose
+# Build with the pinned seeded Omega compiler
+OMC=/path/to/omega-mv/seed/out/omc nice -n 19 sh tools/build.sh
 
-# Run linter and formatting checks
-cargo clippy -- -D warnings
-cargo fmt --check
+# Tests: unprivileged, root sandbox qualification, generated syscall table
+sh tests/user.sh
+sudo -n sh tests/sandbox.sh
+sh tools/gen-syscalls.sh --check
 ```
 
 ## Pull Request Guidelines

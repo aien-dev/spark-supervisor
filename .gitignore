@@ -1,9 +1,5 @@
-/target
-Cargo.lock
+/out/
 *.log
-*.db
-*.db-shm
-*.db-wal
 .env
 .env.*
 *.pem
